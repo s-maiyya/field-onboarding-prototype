@@ -87,13 +87,23 @@ p{margin:4px 0 10px}
 .plbl{background:transparent;border:0;box-shadow:none;color:#fff;font:600 14px var(--disp);text-shadow:0 0 3px #000,0 0 3px #000}
 .plbl::before{display:none}
 .hdl{background:var(--mari,#F2A900);border:4px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+.hdl::after{content:"";position:absolute;inset:-12px;border-radius:50%}
+@media (min-width:600px){
+  html,body{background:#1a1d17}
+  body{display:grid;place-items:center;min-height:100dvh}
+  #app{position:relative;width:412px;height:min(calc(100dvh - 32px),880px);transform:translateZ(0);overflow:hidden;border-radius:28px;box-shadow:0 10px 40px rgba(0,0,0,.5)}
+  #map{height:100%}
+  #sheet{max-height:60%}
+}
 </style></head>
 <body>
+<div id="app">
 <div id="map"></div><div id="dim"></div>
 <button class="fab" id="bk" data-a="back" aria-label="Back"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
 <button class="fab" id="lc" data-a="locate" aria-label="My location"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></button>
 <div id="toast" role="status"></div>
 <div id="sheet"></div>
+</div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 (function(){
@@ -266,19 +276,22 @@ function drawFarm(){
       L.polygon(s.poly,{color:hl?MARI:"#ffffff",weight:hl?3:1,dashArray:hl?"6 4":null,fillColor:col,fillOpacity:dim?.12:(s.crop?.55:.15),opacity:dim?.4:.9,interactive:false}).addTo(T.farmLG);});
     var o=L.polygon(p.poly,{color:MARI,weight:dim?2:3,fill:false,opacity:dim?.45:1,interactive:false}).addTo(T.farmLG);
     if(!dim)o.bindTooltip(esc(p.name),{permanent:true,direction:"center",className:"plbl"});});}
+// draggable corner handles; pts is mutated in place
+function handles(g,pts,onMove){pts.forEach(function(p,i){
+  var mk=L.marker(p,{draggable:true,autoPan:false,icon:L.divIcon({className:"hdl",iconSize:[28,28],iconAnchor:[14,14]})}).addTo(g);
+  mk.on("drag",function(){var ll=mk.getLatLng();pts[i]=[ll.lat,ll.lng];onMove();});
+  mk.on("dragend",function(){render();});});}
 function drawDraft(){
   if(!hasMap())return;var g=T.draftLG;g.clearLayers();
   var opt={color:MARI,weight:3,interactive:false};
   function dots(pts){pts.forEach(function(p){L.circleMarker(p,{radius:9,color:"#fff",weight:3,fillColor:MARI,fillOpacity:1,interactive:false}).addTo(g);});}
   if(S.screen==="mark"){var l=S.loc;
-    if(l.phase==="draw"){if(l.points.length>=3)L.polygon(l.points,{color:MARI,weight:3,fillOpacity:.15,dashArray:"6 6",interactive:false}).addTo(g);else if(l.points.length)L.polyline(l.points,opt).addTo(g);dots(l.points);}
+    if(l.phase==="draw"){var sh=null;if(l.points.length>=3)sh=L.polygon(l.points,{color:MARI,weight:3,fillOpacity:.15,dashArray:"6 6",interactive:false}).addTo(g);else if(l.points.length)sh=L.polyline(l.points,opt).addTo(g);
+      handles(g,l.points,function(){if(sh)sh.setLatLngs(l.points);});}
     else if(l.phase==="walk"&&l.points&&l.points.length)L.polyline(l.points,{color:MARI,weight:4,interactive:false}).addTo(g);}
   else if(S.screen==="confirm"&&S.draft){var d=S.draft,pg=L.polygon(d.poly,{color:MARI,weight:3,fillColor:MARI,fillOpacity:.22,interactive:false}).addTo(g);
-    if(canDrag(d))d.poly.forEach(function(p,i){
-      var mk=L.marker(p,{draggable:true,autoPan:true,icon:L.divIcon({className:"hdl",iconSize:[30,30],iconAnchor:[15,15]})}).addTo(g);
-      mk.on("drag",function(){var ll=mk.getLatLng();d.poly[i]=[ll.lat,ll.lng];d.m2=areaOfLatLngs(d.poly);d.sq=false;pg.setLatLngs(d.poly);
-        var h=$("cfh");if(h)h.textContent=nextPlotName()+" · "+(d.m2/ACRE).toFixed(2)+" acres";});
-      mk.on("dragend",function(){render();});});}
+    if(canDrag(d))handles(g,d.poly,function(){d.m2=areaOfLatLngs(d.poly);d.sq=false;pg.setLatLngs(d.poly);
+        var h=$("cfh");if(h)h.textContent=nextPlotName()+" · "+(d.m2/ACRE).toFixed(2)+" acres";});}
   else if(S.screen==="split"&&S.split){var sp=S.split,pl=plotById(sp.plotId);
     if(sp.phase==="review"&&sp.pieces){sp.pieces.forEach(function(pc,i){L.polygon(pc.poly,{color:"#fff",weight:2,fillColor:i?"#4FC3F7":MARI,fillOpacity:.5,interactive:false}).addTo(g);});}
     if(sp.points.length){dots(sp.points);if(sp.points.length===2&&pl)L.polyline(extendLine(pl.poly,sp.points[0],sp.points[1]),{color:"#fff",weight:3,dashArray:"8 6",interactive:false}).addTo(g);}}}
@@ -315,7 +328,7 @@ function vMark(){
       opt("here","stand","I\'m standing in it","We place a square. You set the size")+opt("demo","demo","Demo walk","See how walking works, no need to move")+
       (l.error?opt("sample","pick","Use sample location","Place a square on a sample field"):'')+'</div>';
   }else if(l.phase==="draw"){var n=l.points.length;
-    h='<h1>Tap each corner</h1><p class="mute">Zoom in until you see the plot edges. '+(n?n+' corner'+(n>1?'s':'')+' so far.':'Tap the first corner.')+'</p>'+(l.msg?'<p class="warn">'+l.msg+'</p>':'')+
+    h='<h1>Tap each corner</h1><p class="mute">Zoom in until you see the plot edges. '+(n?n+' corner'+(n>1?'s':'')+' so far. Drag a corner to move it.':'Tap the first corner.')+'</p>'+(l.msg?'<p class="warn">'+l.msg+'</p>':'')+
       '<button class="btn p" data-a="drawdone" '+(n>=3?'':'disabled')+'>Done</button><div class="two"><button class="btn" data-a="undo" '+(n?'':'disabled')+'>Undo last</button><button class="btn txt" data-a="cancel">Cancel</button></div>';
   }else{
     h='<h1>Walking…</h1><p id="ws" class="mute"></p>'+(l.msg?'<p class="warn">'+l.msg+'</p>':'')+'<button class="btn p" data-a="finish">Finish</button><button class="btn txt" data-a="cancel">Cancel</button>';}
