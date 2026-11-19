@@ -32,7 +32,7 @@ p{margin:6px 0 12px}
 .keys button{min-height:60px;font-size:26px;font-weight:700;border-radius:12px;border:2px solid var(--line);background:#fff}
 .otp{display:flex;gap:10px;justify-content:center;margin:10px 0}
 .otp span{width:54px;height:62px;border:2px solid var(--g7);border-radius:12px;display:grid;place-items:center;font-size:30px;font-weight:700;background:#fff}
-#map{height:max(300px,55vh);background:#cfd8c8;width:100%}
+#map{height:max(300px,50vh);background:#cfd8c8;width:100%}
 #map4{height:230px;width:100%;border-radius:14px}
 .units{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center}
 .units b{display:block;font-size:20px;color:var(--g9)}.units span{font-size:14px;color:#5a5445}
@@ -177,19 +177,27 @@ function mount2(){
   var el=$("map");
   if(hasMap()){var c=S.loc.center||SAMPLE,m=T.maps.main=L.map(el,{zoomControl:true}).setView([c.lat,c.lng],S.loc.center?18:16);
     L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Imagery © Esri"}).addTo(m);
+    m.on("click",function(e){if(S.loc.phase==="draw"){S.loc.points.push([e.latlng.lat,e.latlng.lng]);drawLoc();panel();}});
     setTimeout(function(){m.invalidateSize();},60);drawLoc();}
   else el.innerHTML='<p style="padding:16px">Map could not load. You can still continue with the buttons below.</p>';
   panel();}
 function drawLoc(){
   var m=T.maps.main,l=S.loc;if(!m)return;
-  ["poly","line"].forEach(function(k){if(T.layers[k]){m.removeLayer(T.layers[k]);T.layers[k]=null;}});
+  ["poly","line","dots"].forEach(function(k){if(T.layers[k]){m.removeLayer(T.layers[k]);T.layers[k]=null;}});
   if(l.poly)T.layers.poly=L.polygon(l.poly,{color:"#ffd400",weight:3,fillOpacity:.2}).addTo(m);
-  else if(l.points&&l.points.length)T.layers.line=L.polyline(l.points,{color:"#ffd400",weight:4}).addTo(m);}
+  else if(l.phase==="draw"&&l.points.length>=3)T.layers.line=L.polygon(l.points,{color:"#ffd400",weight:3,fillOpacity:.15,dashArray:"6 6"}).addTo(m);
+  else if(l.points&&l.points.length)T.layers.line=L.polyline(l.points,{color:"#ffd400",weight:4}).addTo(m);
+  if(l.phase==="draw")T.layers.dots=L.layerGroup(l.points.map(function(p){return L.circleMarker(p,{radius:9,color:"#fff",weight:3,fillColor:"#ffd400",fillOpacity:1,interactive:false});})).addTo(m);}
 function panel(){
   var p=$("panel"),l=S.loc,h="";if(!p)return;
   if(l.phase==="choose"){
     h='<h1>Where is '+fld()+'?</h1>'+(l.busy?'<p>Finding your location…</p>':'')+(l.error?'<p class="err">'+l.error+'</p><button class="btn soil" data-a="sample">Use sample location</button>':'')+
-      '<button class="btn p" data-a="here">I\'m at the field</button><button class="btn" data-a="walk">Walk the boundary</button><button class="btn" data-a="demo">Show me a demo walk</button>';
+      '<button class="btn p" data-a="here">I\'m at the field</button><button class="btn" data-a="draw">Tap the corners on the map</button><button class="btn" data-a="walk">Walk the boundary</button><button class="btn" data-a="demo">Show me a demo walk</button>';
+  }else if(l.phase==="draw"){
+    var n=l.points.length;
+    h='<h1>Tap each corner of '+fld()+'</h1><p class="small">Zoom in until you can see the field edges. '+(n?n+' corner'+(n>1?'s':'')+' so far.':'Tap the first corner.')+'</p>'+
+      (l.msg?'<p class="warn">'+l.msg+'</p>':'')+'<button class="btn p" data-a="drawdone" '+(n>=3?'':'disabled')+'>Done</button>'+
+      '<div class="row"><button class="btn" data-a="undo" '+(n?'':'disabled')+'>Undo last corner</button><button class="btn" data-a="redo">Cancel</button></div>';
   }else if(l.phase==="walk"){
     h='<h1>Walking…</h1><div class="card" id="ws"></div>'+(l.msg?'<p class="warn">'+l.msg+'</p>':'')+'<button class="btn p" data-a="finish">Finish</button><button class="btn" data-a="redo">Cancel</button>';
   }else{
@@ -220,6 +228,15 @@ function addFix(f){var l=S.loc;if(l.phase!=="walk")return;l.acc=f.acc;
   l.points.push([f.lat,f.lng]);
   if(hasMap()&&T.maps.main){if(l.points.length===1)T.maps.main.setView([f.lat,f.lng],18);else T.maps.main.panTo([f.lat,f.lng]);}
   drawLoc();stats();}
+function startDraw(){
+  S.loc={phase:"draw",points:[]};drawLoc();panel();
+  if(!hasMap())return;var m=T.maps.main;m.setZoom(Math.max(m.getZoom(),17));
+  if(navigator.geolocation)navigator.geolocation.getCurrentPosition(function(p){if(S.loc.phase==="draw"&&!S.loc.points.length&&T.maps.main)T.maps.main.setView([p.coords.latitude,p.coords.longitude],18);},function(){},{enableHighAccuracy:true,timeout:8000,maximumAge:60000});}
+function drawDone(){
+  var pts=S.loc.points;if(pts.length<3)return;
+  S.loc={phase:"review",poly:pts,m2:areaOfLatLngs(pts)};
+  if(hasMap()&&T.maps.main){drawLoc();T.maps.main.fitBounds(L.polygon(pts).getBounds(),{maxZoom:19,padding:[20,20]});}else drawLoc();
+  panel();}
 function finish(){
   var l=S.loc;if(l.points.length<4){l.msg="Only "+l.points.length+" point(s) so far. Keep walking round the field until you have at least 4, then tap Finish.";return panel();}
   stopCapture();var pts=l.points,gap=distM(pts[0],pts[pts.length-1]);
@@ -306,6 +323,9 @@ var A={
   sample:function(){setSquare(SAMPLE,null,2);},
   walk:function(){startWalk(false);},
   demo:function(){startWalk(true);},
+  draw:startDraw,
+  drawdone:drawDone,
+  undo:function(){S.loc.points.pop();drawLoc();panel();},
   finish:finish,
   redo:function(){cleanup();S.loc={phase:"choose"};render();},
   size:function(e){var l=S.loc;setSquare(l.center,l.acc,l.si+parseInt(e.dataset.d,10));},
