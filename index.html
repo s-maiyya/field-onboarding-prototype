@@ -83,7 +83,6 @@ p{margin:4px 0 10px}
 .cell button span{display:block;font-size:12px;color:var(--mute)}
 .cell button b{display:block;font-size:18px}
 .cell.sel button{background:var(--mari);border-color:var(--mari)}.cell.sel button span{color:var(--ink)}
-.note{border-top:1px solid var(--line);padding:8px 0}
 .plbl{background:transparent;border:0;box-shadow:none;color:#fff;font:600 14px var(--disp);text-shadow:0 0 3px #000,0 0 3px #000}
 .plbl::before{display:none}
 .hdl{background:var(--mari,#F2A900);border:4px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.4)}
@@ -130,7 +129,6 @@ var ICON={
   demo:SVG+'<circle cx="12" cy="12" r="9"/><path d="M10 8.5l5 3.5-5 3.5z" fill="currentColor"/></svg>',
   plus:SVG+'<path d="M12 5v14M5 12h14"/></svg>',
   split:SVG+'<rect x="4" y="5" width="16" height="14" rx="1"/><path d="M3 17L21 7"/></svg>',
-  note:SVG+'<path d="M5 4h11l3 3v13H5z"/><path d="M8 10h8M8 14h6"/></svg>',
   pick:SVG+'<rect x="4" y="5" width="16" height="14" rx="1"/></svg>'
 };
 
@@ -230,8 +228,8 @@ function extendLine(poly,A,B){ // endpoints of line A-B stretched well beyond th
 var S;
 function variantFromHash(){return (typeof location!=="undefined"&&location.hash==="#all-at-once")?"aao":"prog";}
 function vlabel(){return S.variant==="aao"?"Everything up front":"Step by step";}
-function fresh(keepMode){return{variant:variantFromHash(),setup:false,screen:"start",mode:keepMode||null,phone:"",otp:null,farm:{plots:[],notes:[]},cur:null,loc:{phase:"choose"},draft:null,
-  weather:null,v:{},sowSel:null,sowTouched:false,split:null,notePlot:null,t0:null,tEnd:null,keys:0,taps:0,seq:0,centered:false};}
+function fresh(keepMode){return{variant:variantFromHash(),setup:false,screen:"start",mode:keepMode||null,phone:"",otp:null,farm:{plots:[]},cur:null,loc:{phase:"choose"},draft:null,
+  weather:null,v:{},sowSel:null,sowTouched:false,split:null,t0:null,tEnd:null,keys:0,taps:0,seq:0,centered:false};}
 S=fresh();
 var T={map:null,farmLG:null,draftLG:null,me:null,timers:[],watch:null,rec:null,tok:0,wxTimer:null,keepStrip:false};
 var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -441,9 +439,8 @@ function vHome(){
         if(!s.crop)return '<div class="sec"><i class="dot" style="background:#fff"></i><div><b>Crop not set</b>'+lab+'<br><button class="sbtn" data-a="setcrop" data-p="'+p.id+'" data-s="'+s.id+'">Set crop</button></div></div>';
         if(!s.sowDate)return '<div class="sec"><i class="dot" style="background:'+CCOL[s.crop]+'"></i><div><b>'+cap(s.crop)+'</b>'+lab+'<br><button class="sbtn" data-a="setsow" data-p="'+p.id+'" data-s="'+s.id+'">Set sowing date</button></div></div>';
         return '<div class="sec"><i class="dot" style="background:'+CCOL[s.crop]+'"></i><div><b>'+cap(s.crop)+'</b> · Day '+Math.max(0,daysBetween(s.sowDate,today()))+lab+(adviceFor(s)?'<div class="adv">'+adviceFor(s)+'</div>':'')+'</div></div>';}).join("")+'</div>';}).join("");
-  h+='<div class="opts">'+opt("addplot","plus","Add another plot","Mark more land")+opt("twocrops","split","This plot has two crops","Draw a dividing line")+opt("notes","note","Speak a note","Watered, weeded, sprayed…")+
+  h+='<div class="opts">'+opt("addplot","plus","Add another plot","Mark more land")+opt("twocrops","split","This plot has two crops","Draw a dividing line")+
     (S.mode==="worker"?opt("again","worker","Register another farmer","Start again for the next person"):'')+'</div>';
-  var nn=S.farm.notes.slice(0,2);if(nn.length)h+='<h2>Recent notes</h2>'+nn.map(noteHtml).join("");
   return h+'<p class="small" style="margin-top:12px">'+vlabel()+' · '+pad(Math.floor(el/60))+':'+pad(el%60)+' · '+S.keys+' key presses · '+S.taps+' taps</p>';}
 
 /* split */
@@ -471,19 +468,8 @@ function tryDivide(){var sp=S.split,p=plotById(sp.plotId),best=null;sp.pieces=nu
   p.sections.forEach(function(s){var r=splitByLine(s.poly,sp.points,p.m2);if(r&&(!best||s.m2>best.s.m2))best={s:s,r:r};});
   if(best){sp.pieces=best.r;sp.secId=best.s.id;}}
 
-/* notes */
-function noteHtml(n){var p=plotById(n.plotId);return '<div class="note"><span class="small">'+n.time+(p?' · '+esc(p.name):'')+'</span><br>'+esc(n.text)+'</div>';}
-function addNote(t){S.farm.notes.unshift({plotId:S.notePlot,text:t,time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})});}
-function vNote(){
-  var h='<h1>Add a note</h1>';
-  if(S.farm.plots.length>1)h+='<div class="chips">'+S.farm.plots.map(function(p){return '<button class="chip'+(p.id===S.notePlot?' sel':'')+'" data-a="notep" data-p="'+p.id+'">'+esc(p.name)+'</button>';}).join("")+'</div>';
-  h+=micRow("Tap and say your note");
-  h+='<div class="chips">'+["Watered","Weeded","Sprayed","Saw pests"].map(function(t){return '<button class="chip" data-a="qnote" data-t="'+t+'">'+t+'</button>';}).join("")+'</div>';
-  if(S.farm.notes.length)h+='<h2>Notes</h2>'+S.farm.notes.map(noteHtml).join("");
-  return h+'<button class="btn p" data-a="done">Done</button>';}
-
 /* ---------- render ---------- */
-var VIEWS={start:vStart,phone:vPhone,mark:vMark,confirm:vConfirm,value:vValue,crop:vCrop,sow:vSow,home:vHome,askcrops:vAskCrops,askplot:vAskPlot,split:vSplit,note:vNote};
+var VIEWS={start:vStart,phone:vPhone,mark:vMark,confirm:vConfirm,value:vValue,crop:vCrop,sow:vSow,home:vHome,askcrops:vAskCrops,askplot:vAskPlot,split:vSplit};
 var lastScreen=null;
 function render(){
   var sh=$("sheet"),st=$("strip"),prevStrip=st?st.scrollLeft:null,prevTop=lastScreen===S.screen?sh.scrollTop:0;
@@ -576,11 +562,7 @@ var A={
   vnext:function(){go("crop");},
   mic:function(){
     if(S.screen==="crop")toggleMic(parseCrop,function(r){S.v.result=r;});
-    else if(S.screen==="sow")toggleMic(parseSowingDate,function(d,txt){setSow(d);S.sowTouched=true;});
-    else if(S.screen==="note"){
-      if(T.rec){T.rec();return;}var tok=++T.tok;S.v={listening:true,text:""};render();
-      T.rec=listen(function(s){if(tok!==T.tok)return;S.v.text=s;var el=$("say");if(el)el.textContent=s;},function(f){if(tok!==T.tok)return;T.rec=null;S.v={};if(f)addNote(f);render();},function(m){if(tok!==T.tok)return;S.v={msg:m};T.rec=null;render();});
-      if(!T.rec)render();}},
+    else if(S.screen==="sow")toggleMic(parseSowingDate,function(d,txt){setSow(d);S.sowTouched=true;});},
   retry:function(){S.v={};render();},
   crop:function(e){setCrop(e.dataset.c);},
   cropyes:function(){setCrop(S.v.result);},
@@ -597,10 +579,6 @@ var A={
   splitok:function(){var sp=S.split;if(!sp.pieces)return;var p=plotById(sp.plotId),sec=p.sections.filter(function(s){return s.id===sp.secId;})[0],nid=uid();
     var big=sp.pieces[0],sm=sp.pieces[1];sec.poly=big.poly;sec.m2=big.m2;
     var ns={id:nid,poly:sm.poly,m2:sm.m2,crop:null,sowDate:null};p.sections.push(ns);S.cur={p:p.id,s:nid};S.split=null;go("crop");},
-  notes:function(){S.notePlot=S.farm.plots[S.farm.plots.length-1].id;go("note");},
-  notep:function(e){S.notePlot=+e.dataset.p;render();},
-  qnote:function(e){addNote(e.dataset.t);render();},
-  done:function(){go("home");},
   again:function(){resetFarm();if(hasMap()){T.map.setView([SAMPLE.lat,SAMPLE.lng],17);}go("phone");}
 };
 function boot(){
