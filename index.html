@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>My Field</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--g9:#1f4d2b;--g7:#2f6f3e;--g1:#e3f0dd;--s8:#4a3220;--s5:#8a5a34;--sand:#f7f3e8;--card:#fff;--ink:#1b1b17;--line:#cfc6b0;--amber:#a85d00;--red:#a32a1a}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#e9e4d3;color:var(--ink);font:18px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+#app{max-width:430px;margin:0 auto;min-height:100dvh;background:var(--sand);display:flex;flex-direction:column;overflow-x:hidden}
+header{display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--g9);color:#fff;min-height:56px}
+header .t{flex:1;font-weight:700}
+.ib{width:48px;height:48px;border:0;border-radius:12px;background:transparent;color:inherit;display:grid;place-items:center}
+.ib svg{width:26px;height:26px}
+main{padding:16px;flex:1}
+h1{font-size:28px;line-height:1.15;margin:4px 0 8px;color:var(--g9)}
+h2{font-size:21px;margin:12px 0 6px;color:var(--s8)}
+p{margin:6px 0 12px}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:56px;padding:10px 16px;margin:8px 0;border-radius:14px;border:2px solid var(--g7);background:#fff;color:var(--g9);font:inherit;font-weight:700}
+.btn.p{background:var(--g7);color:#fff}
+.btn.soil{background:var(--s8);border-color:var(--s8);color:#fff}
+.btn:disabled{opacity:.45}
+.row{display:flex;gap:10px}.row>*{flex:1}
+.card{background:var(--card);border:2px solid var(--line);border-radius:14px;padding:12px;margin:10px 0}
+.small{font-size:16px;color:#5a5445}
+.warn{color:var(--amber);font-weight:700}.err{color:var(--red);font-weight:700}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{min-height:56px;border:2px solid var(--g7);border-radius:12px;background:#fff;color:var(--g9);font:inherit;font-weight:700;padding:8px}
+.disp{font-size:34px;letter-spacing:2px;text-align:center;background:#fff;border:2px solid var(--line);border-radius:14px;padding:10px;min-height:68px;font-weight:700}
+.keys{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:12px 0}
+.keys button{min-height:60px;font-size:26px;font-weight:700;border-radius:12px;border:2px solid var(--line);background:#fff}
+.otp{display:flex;gap:10px;justify-content:center;margin:10px 0}
+.otp span{width:54px;height:62px;border:2px solid var(--g7);border-radius:12px;display:grid;place-items:center;font-size:30px;font-weight:700;background:#fff}
+#map{height:max(300px,55vh);background:#cfd8c8;width:100%}
+#map4{height:230px;width:100%;border-radius:14px}
+.units{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;text-align:center}
+.units b{display:block;font-size:20px;color:var(--g9)}.units span{font-size:14px;color:#5a5445}
+.bars{display:flex;gap:6px;align-items:flex-end;height:90px;margin:8px 0}
+.bars div{flex:1;text-align:center;font-size:12px}
+.bars i{display:block;background:#2b6cb0;min-height:2px;border-radius:3px 3px 0 0}
+.mic{width:112px;height:112px;border-radius:50%;border:0;background:var(--g7);color:#fff;display:grid;place-items:center;margin:10px auto}
+.mic.on{background:var(--red);box-shadow:0 0 0 10px #f3c9c3}.mic svg{width:52px;height:52px}
+.say{min-height:28px;text-align:center;font-style:italic}
+.chip{display:inline-block;background:var(--g1);color:var(--g9);border-radius:20px;padding:4px 12px;font-weight:700}
+.act{background:#fff7e0;border:2px solid var(--amber);border-radius:14px;padding:12px;margin:10px 0;font-weight:700}
+</style></head>
+<body><div id="app"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+"use strict";
+/* ---------- constants ---------- */
+var SAMPLE={lat:11.905,lng:79.715};
+var SIZES=[0.25,0.5,1,2,3,5], ACRE=4046.856;
+var DEMO=[[11.922,79.761508],[11.922096,79.761517],[11.922171,79.76143],[11.922223,79.761328],[11.922246,79.761216],[11.92227,79.761121],[11.922266,79.761023],[11.92224,79.760937],[11.922274,79.760822],[11.922298,79.76066],[11.92225,79.760525],[11.922132,79.760541],[11.922035,79.760615],[11.921969,79.760666],[11.92191,79.760687],[11.921827,79.760671],[11.921747,79.760711],[11.921685,79.760796],[11.921655,79.760909],[11.921623,79.761033],[11.921655,79.761155],[11.92177,79.761202],[11.921851,79.761219],[11.921887,79.761284],[11.921921,79.761426]].map(function(p){return[p[0]-0.017,p[1]-0.046];});
+var CROPS={paddy:["paddy","rice","nel","dhan"],ragi:["ragi","finger millet","kezhvaragu"],groundnut:["groundnut","peanut","verkadalai","moongphali"],sugarcane:["sugarcane","karumbu","ganna"],banana:["banana","vazhai","kela"],coconut:["coconut"],"black gram":["black gram","urad","ulundu"],"green gram":["green gram","moong","pasi payaru"],sesame:["sesame","ellu","til"],cotton:["cotton","paruthi"],maize:["maize","corn","makka cholam"]};
+var MONTHS=["January","February","March","April","May","June","July","August","September","October","November","December"];
+var DAYS=["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+var NUMW={one:1,two:2,three:3,four:4,five:5,six:6,seven:7,eight:8,nine:9,ten:10,eleven:11,twelve:12,a:1,an:1};
+var ICON={back:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>',mic:'<svg viewBox="0 0 24 24" fill="currentColor"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v4" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>'};
+
+/* ---------- pure helpers ---------- */
+function ll(p){return Array.isArray(p)?{lat:p[0],lng:p[1]}:{lat:p.lat,lng:p.lng};}
+function centroid(a){var s={lat:0,lng:0};a.forEach(function(p){p=ll(p);s.lat+=p.lat;s.lng+=p.lng;});return{lat:s.lat/a.length,lng:s.lng/a.length};}
+function distM(a,b){a=ll(a);b=ll(b);var k=111320*Math.cos((a.lat+b.lat)/2*Math.PI/180);return Math.hypot((a.lat-b.lat)*111320,(a.lng-b.lng)*k);}
+function areaOfLatLngs(a){ // m2; equirectangular around centroid + shoelace
+  if(!a||a.length<3)return 0;var c=centroid(a),k=111320*Math.cos(c.lat*Math.PI/180),s=0;
+  var xy=a.map(function(p){p=ll(p);return[(p.lng-c.lng)*k,(p.lat-c.lat)*111320];});
+  for(var i=0;i<xy.length;i++){var p=xy[i],q=xy[(i+1)%xy.length];s+=p[0]*q[1]-q[0]*p[1];}
+  return Math.abs(s)/2;}
+function squarePoly(c,acres){var h=Math.sqrt(acres*ACRE)/2,dl=h/111320,dn=h/(111320*Math.cos(c.lat*Math.PI/180));
+  return[[c.lat-dl,c.lng-dn],[c.lat-dl,c.lng+dn],[c.lat+dl,c.lng+dn],[c.lat+dl,c.lng-dn]];}
+function parseCrop(text){
+  var t=String(text||"").toLowerCase(),list=[];
+  Object.keys(CROPS).forEach(function(n){CROPS[n].forEach(function(k){list.push([k,n]);});});
+  list.sort(function(a,b){return b[0].length-a[0].length;});
+  for(var i=0;i<list.length;i++){var re=new RegExp("(^|[^a-z])"+list[i][0].replace(/ /g,"\\s+")+"(s|es)?([^a-z]|$)");if(re.test(t))return list[i][1];}
+  return null;}
+function addDays(d,n){var x=new Date(d.getFullYear(),d.getMonth(),d.getDate());x.setDate(x.getDate()+n);return x;}
+function fmtRange(a,b){var y=a.getFullYear()!==new Date().getFullYear()?" "+a.getFullYear():"";
+  if(+a===+b)return a.getDate()+" "+MONTHS[a.getMonth()]+y;
+  if(a.getMonth()===b.getMonth())return a.getDate()+"–"+b.getDate()+" "+MONTHS[a.getMonth()]+y;
+  return a.getDate()+" "+MONTHS[a.getMonth()].slice(0,3)+" – "+b.getDate()+" "+MONTHS[b.getMonth()].slice(0,3)+y;}
+function rangeAgo(centerDaysAgo,pm,now){now=now||new Date();var f=addDays(now,-centerDaysAgo-pm),t=addDays(now,-Math.max(0,centerDaysAgo-pm));
+  return{from:f,to:t,label:"Around "+fmtRange(f,t)};}
+function parseSowing(text,now){
+  now=now||new Date();var t=String(text||"").toLowerCase();
+  var m=t.match(/(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|an?)\s*(day|week|month)s?\s*(ago|back|before)/);
+  if(m){var n=/\d/.test(m[1])?parseInt(m[1],10):NUMW[m[1]],u=m[2];
+    if(u==="day")return rangeAgo(n,n<=1?1:2,now);
+    if(u==="week")return rangeAgo(n*7,7,now);
+    return rangeAgo(n*30,15,now);}
+  if(/yesterday/.test(t))return rangeAgo(1,0,now);
+  if(/today/.test(t))return rangeAgo(0,0,now);
+  if(/last week/.test(t))return rangeAgo(7,3,now);
+  if(/last month/.test(t))return rangeAgo(30,15,now);
+  return null;}
+function fmtAreas(m2){var ac=m2/ACRE;return{acres:ac,cents:ac*100,guntha:ac*40,ha:m2/10000};}
+function pad(n){return n<10?"0"+n:""+n;}
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function cap(s){return s.charAt(0).toUpperCase()+s.slice(1);}
+
+/* ---------- state ---------- */
+var S;
+function fresh(keepMode){return{screen:0,mode:keepMode||null,phone:"",otp:null,loc:{phase:"choose"},field:null,weather:null,crop:null,sow:null,v:{},notes:[],t0:null,tEnd:null,keys:0,taps:0};}
+S=fresh();
+var T={maps:{},timers:[],watch:null,rec:null,layers:{}};
+var hasMap=function(){return typeof window.L!=="undefined";};
+var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+function fld(){return S.mode==="worker"?"their field":"your field";}
+function $(id){return document.getElementById(id);}
+
+/* ---------- speech ---------- */
+function listen(onText,onEnd,onErr){ // returns stop(); falls back silently via onErr
+  if(!SR){onErr("Voice is not available in this browser. Tap a choice below.");return null;}
+  var r;try{r=new SR();}catch(e){onErr("Voice could not start. Tap a choice below.");return null;}
+  r.lang="en-IN";r.interimResults=true;r.continuous=false;var final="";
+  r.onresult=function(e){var s="";for(var i=0;i<e.results.length;i++){s+=e.results[i][0].transcript;if(e.results[i].isFinal)final=s;}onText(s,!!final);};
+  r.onerror=function(e){onErr(e.error==="not-allowed"||e.error==="service-not-allowed"?"Microphone is blocked. Tap a choice below.":"Didn't catch that. Try again or tap a choice below.");};
+  r.onend=function(){T.rec=null;onEnd(final);};
+  try{r.start();}catch(e){onErr("Voice could not start. Tap a choice below.");return null;}
+  return function(){try{r.stop();}catch(e){}};}
+function toggleMic(parse,done){
+  if(T.rec){T.rec();return;}
+  S.v={listening:true,text:"",msg:""};render();
+  T.rec=listen(function(s){S.v.text=s;var el=$("say");if(el)el.textContent=s;},
+    function(final){S.v.listening=false;T.rec=null;var res=final?parse(final):null;
+      if(res)S.v.result=res;else if(!S.v.msg)S.v.msg=final?"Didn't recognise that. Try again or tap a choice below.":"Didn't hear anything. Try again or tap a choice below.";
+      S.v.text=final||"";render();},
+    function(m){S.v.msg=m;S.v.listening=false;T.rec=null;render();});
+  if(!T.rec){S.v.listening=false;render();}}
+
+/* ---------- navigation ---------- */
+function stopCapture(){
+  if(T.watch!==null&&navigator.geolocation){navigator.geolocation.clearWatch(T.watch);}T.watch=null;
+  T.timers.forEach(function(t){clearInterval(t);clearTimeout(t);});T.timers=[];}
+function cleanup(){
+  stopCapture();
+  if(T.rec){T.rec();T.rec=null;}
+  Object.keys(T.maps).forEach(function(k){try{T.maps[k].remove();}catch(e){}});T.maps={};T.layers={};}
+function goTo(n){
+  cleanup();
+  if(S.screen===0&&n===1){S.t0=Date.now();S.taps=0;S.keys=0;}
+  S.screen=n;S.v={};if(n===2)S.loc={phase:"choose"};
+  if(n===3)fetchWeather();
+  if(n===6&&!S.tEnd)S.tEnd=Date.now();
+  render();window.scrollTo(0,0);}
+function newFarmer(){var m=S.mode;cleanup();S=fresh(m);S.t0=Date.now();S.screen=1;render();}
+
+/* ---------- views ---------- */
+var VIEWS=[v0,v1,v2,v3,v4,v5,v6];
+function render(){
+  var s=S.screen,hdr='<header><button class="ib" data-a="back" aria-label="Back" '+(s?'':'style="visibility:hidden"')+'>'+ICON.back+'</button><div class="t">'+(s>=1&&s<=5?"Step "+s+" of 5":"My Field")+'</div></header>';
+  $("app").innerHTML=hdr+'<main>'+VIEWS[s]()+'</main>';
+  var m=MOUNT[s];if(m)m();}
+var MOUNT={2:mount2,3:mount3};
+
+function v0(){return '<h1>My Field</h1><p>See your field from the sky, get weather and advice for it.</p>'+
+  '<button class="btn p" data-a="mode" data-m="farmer">I\'m a farmer</button><button class="btn" data-a="mode" data-m="worker">I\'m registering a farmer</button>'+
+  '<p class="small" style="margin-top:40px">Prototype — test version. Location is used only on this phone; nothing is saved.</p>';}
+
+function v1(){
+  var d=S.phone,txt=d?d.slice(0,5)+(d.length>5?" "+d.slice(5):""):"Your mobile number";
+  if(S.otp===null){
+    var keys="123456789".split("").map(function(k){return '<button data-a="key" data-k="'+k+'">'+k+'</button>';}).join("")+
+      '<button data-a="key" data-k="bs" aria-label="Backspace">&#9003;</button><button data-a="key" data-k="0">0</button><button data-a="key" data-k="clr" style="font-size:18px">Clear</button>';
+    return '<h1>Your phone number</h1><div class="disp" style="'+(d?'':'font-size:20px;color:#777;font-weight:400')+'">'+txt+'</div><div class="keys">'+keys+'</div>'+
+      '<button class="btn p" data-a="send" '+(d.length===10?'':'disabled')+'>Send code</button>'+(d.length===10?'':'<p class="small">Enter all 10 digits.</p>');}
+  var boxes=[0,1,2,3].map(function(i){return '<span>'+(S.otp.shown?S.otp.code[i]:"")+'</span>';}).join("");
+  return '<h1>Check your code</h1><div class="otp">'+boxes+'</div><p class="small" style="text-align:center">'+(S.otp.shown?"Code read from SMS":"Waiting for SMS…")+'</p>'+
+    (S.otp.shown?'<div class="card"><b>OK to continue?</b><p>We use '+fld()+' data to give advice, and share progress with the programme team. We never share it with companies or buyers.</p></div><button class="btn p" data-a="next">Continue</button>':'');}
+
+function areaHtml(m2){var a=fmtAreas(m2);return '<div class="units"><div><b>'+a.acres.toFixed(2)+'</b><span>acres</span></div><div><b>'+Math.round(a.cents)+'</b><span>cents</span></div><div><b>'+a.guntha.toFixed(1)+'</b><span>guntha</span></div><div><b>'+a.ha.toFixed(2)+'</b><span>hectares</span></div></div>';}
+function v2(){return '<div style="margin:-16px -16px 0"><div id="map"></div></div><div id="panel" style="padding-top:12px"></div>';}
+function mount2(){
+  var el=$("map");
+  if(hasMap()){var c=S.loc.center||SAMPLE,m=T.maps.main=L.map(el,{zoomControl:true}).setView([c.lat,c.lng],S.loc.center?18:16);
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Imagery © Esri"}).addTo(m);
+    setTimeout(function(){m.invalidateSize();},60);drawLoc();}
+  else el.innerHTML='<p style="padding:16px">Map could not load. You can still continue with the buttons below.</p>';
+  panel();}
+function drawLoc(){
+  var m=T.maps.main,l=S.loc;if(!m)return;
+  ["poly","line"].forEach(function(k){if(T.layers[k]){m.removeLayer(T.layers[k]);T.layers[k]=null;}});
+  if(l.poly)T.layers.poly=L.polygon(l.poly,{color:"#ffd400",weight:3,fillOpacity:.2}).addTo(m);
+  else if(l.points&&l.points.length)T.layers.line=L.polyline(l.points,{color:"#ffd400",weight:4}).addTo(m);}
+function panel(){
+  var p=$("panel"),l=S.loc,h="";if(!p)return;
+  if(l.phase==="choose"){
+    h='<h1>Where is '+fld()+'?</h1>'+(l.busy?'<p>Finding your location…</p>':'')+(l.error?'<p class="err">'+l.error+'</p><button class="btn soil" data-a="sample">Use sample location</button>':'')+
+      '<button class="btn p" data-a="here">I\'m at the field</button><button class="btn" data-a="walk">Walk the boundary</button><button class="btn" data-a="demo">Show me a demo walk</button>';
+  }else if(l.phase==="walk"){
+    h='<h1>Walking…</h1><div class="card" id="ws"></div>'+(l.msg?'<p class="warn">'+l.msg+'</p>':'')+'<button class="btn p" data-a="finish">Finish</button><button class="btn" data-a="redo">Cancel</button>';
+  }else{
+    var big=l.m2/ACRE>50;
+    h='<h1>'+(big?'Too big':'Is this '+fld()+'?')+'</h1>'+(big?'<p class="err">That looks bigger than one field — try again.</p>':areaHtml(l.m2))+
+      (l.warn?'<p class="warn">'+l.warn+'</p>':'')+(l.acc!=null?'<p class="small">GPS accurate to ±'+Math.round(l.acc)+' m</p>':'')+
+      (l.sq&&!big?'<div class="row" style="align-items:center"><button class="btn" data-a="size" data-d="-1" '+(l.si<=0?'disabled':'')+'>− Smaller</button><button class="btn" data-a="size" data-d="1" '+(l.si>=SIZES.length-1?'disabled':'')+'>Bigger +</button></div>':'')+
+      (big?'':'<button class="btn p" data-a="yes">Yes, this is my field</button>')+'<button class="btn" data-a="redo">Redo</button>';}
+  p.innerHTML=h;stats();}
+function stats(){var e=$("ws"),l=S.loc;if(!e)return;
+  e.innerHTML='<b>'+l.points.length+'</b> points · <b>'+Math.round(l.dist)+'</b> m walked'+(l.acc!=null?' · GPS ±'+Math.round(l.acc)+' m':'')+(l.demo?'<br><span class="small">Demo walk</span>':'');}
+
+/* ---------- field capture ---------- */
+function setLoc(o){S.loc=o;if(hasMap()&&T.maps.main&&o.center&&o.sq){T.maps.main.setView([o.center.lat,o.center.lng],18);}drawLoc();panel();}
+function geoErr(msg){S.loc={phase:"choose",error:msg};panel();}
+function setSquare(c,acc,si){var a=SIZES[si],poly=squarePoly(c,a);
+  S.loc={phase:"review",sq:true,center:c,acc:acc,si:si,poly:poly,m2:areaOfLatLngs(poly)};setLoc(S.loc);}
+function startWalk(demo){
+  S.loc={phase:"walk",points:[],dist:0,acc:null,demo:demo,msg:""};panel();drawLoc();
+  if(demo){var i=0;T.timers.push(setInterval(function(){if(i<DEMO.length)addFix({lat:DEMO[i][0],lng:DEMO[i][1],acc:6}),i++;else{finish();}},250));return;}
+  if(!navigator.geolocation)return geoErr("Location isn't available on this device.");
+  T.watch=navigator.geolocation.watchPosition(function(p){addFix({lat:p.coords.latitude,lng:p.coords.longitude,acc:p.coords.accuracy});},
+    function(e){stopCapture();geoErr(e.code===1?"Location is blocked for this site.":"Couldn't get your location.");},{enableHighAccuracy:true,maximumAge:0,timeout:20000});}
+function addFix(f){var l=S.loc;if(l.phase!=="walk")return;l.acc=f.acc;
+  if(f.acc>25)return stats();
+  var last=l.points[l.points.length-1];
+  if(last){var d=distM(last,f);if(d<3)return stats();l.dist+=d;}
+  l.points.push([f.lat,f.lng]);
+  if(hasMap()&&T.maps.main){if(l.points.length===1)T.maps.main.setView([f.lat,f.lng],18);else T.maps.main.panTo([f.lat,f.lng]);}
+  drawLoc();stats();}
+function finish(){
+  var l=S.loc;if(l.points.length<4){l.msg="Only "+l.points.length+" point(s) so far. Keep walking round the field until you have at least 4, then tap Finish.";return panel();}
+  stopCapture();var pts=l.points,gap=distM(pts[0],pts[pts.length-1]);
+  S.loc={phase:"review",poly:pts,m2:areaOfLatLngs(pts),acc:l.acc,warn:gap>20?"Start and end are "+Math.round(gap)+" m apart — we joined them.":""};
+  if(hasMap()&&T.maps.main){drawLoc();T.maps.main.fitBounds(L.polygon(pts).getBounds(),{maxZoom:19,padding:[20,20]});}else drawLoc();
+  panel();}
+
+/* ---------- screen 3: weather ---------- */
+function fetchWeather(){
+  var c=centroid(S.field.poly);S.weather={status:"loading"};
+  function sample(){var days=[],now=new Date(),p=[0,0,6,0,0,2,0,0,0,12,4,0,0,1],t=[33,32,31,32,33,34,33,34,33,31,30,32,33,34];
+    for(var i=0;i<14;i++)days.push({d:addDays(now,i-7),mm:p[i],t:t[i]});S.weather={status:"sample",days:days};wx();}
+  if(typeof fetch!=="function")return sample();
+  var ctl=typeof AbortController==="function"?new AbortController():null,to=setTimeout(function(){if(ctl)ctl.abort();else sample();},8000);T.timers.push(to);
+  fetch("https://api.open-meteo.com/v1/forecast?latitude="+c.lat.toFixed(4)+"&longitude="+c.lng.toFixed(4)+"&daily=precipitation_sum,temperature_2m_max&past_days=7&forecast_days=7&timezone=auto",ctl?{signal:ctl.signal}:{})
+    .then(function(r){if(!r.ok)throw 0;return r.json();}).then(function(j){
+      var dd=j.daily;if(!dd||dd.time.length<14)throw 0;
+      S.weather={status:"ok",days:dd.time.map(function(s,i){var a=s.split("-");return{d:new Date(+a[0],+a[1]-1,+a[2]),mm:dd.precipitation_sum[i]||0,t:dd.temperature_2m_max[i]};})};wx();})
+    .catch(function(){if(S.weather&&S.weather.status==="loading"){sample();}});}
+function wx(){var e=$("wx");if(!e||S.screen!==3)return;var w=S.weather;
+  if(!w||w.status==="loading"){e.innerHTML='<p>Loading weather…</p>';return;}
+  var past=w.days.slice(0,7),next=w.days.slice(7),tot=past.reduce(function(a,d){return a+d.mm;},0),last=null;
+  past.forEach(function(d){if(d.mm>=0.5)last=d;});
+  var mx=Math.max(10,Math.max.apply(null,next.map(function(d){return d.mm;})));
+  e.innerHTML=(w.status==="sample"?'<p class="warn">Couldn\'t get live weather — showing sample values.</p>':'')+
+    '<h2>Rain, last 7 days</h2><p><b>'+Math.round(tot)+' mm</b>'+(last?' · last rain on '+DAYS[last.d.getDay()]:' · no rain')+'</p>'+
+    '<h2>Next 7 days</h2><div class="bars">'+next.map(function(d){return '<div>'+Math.round(d.mm)+'<i style="height:'+Math.round(d.mm/mx*60)+'px"></i>'+DAYS[d.d.getDay()].slice(0,3)+'</div>';}).join("")+'</div><span class="small">mm of rain per day</span>'+
+    '<h2>Today</h2><p>Highest temperature <b>'+Math.round(next[0].t)+' °C</b></p>'+(w.status==="sample"?'<span class="chip">sample</span>':'');}
+function v3(){return '<h1>'+cap(fld())+' today</h1><div id="map4"></div><div class="card" id="wx"></div><button class="btn p" data-a="next">Next</button>';}
+function mount3(){
+  if(hasMap()){var m=T.maps.v=L.map("map4",{zoomControl:false,dragging:false,touchZoom:false,scrollWheelZoom:false,doubleClickZoom:false,boxZoom:false,keyboard:false});
+    L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",{maxZoom:19,attribution:"Imagery © Esri"}).addTo(m);
+    var pg=L.polygon(S.field.poly,{color:"#ffd400",weight:3,fillOpacity:.15}).addTo(m);m.fitBounds(pg.getBounds(),{maxZoom:19,padding:[30,30]});}
+  else $("map4").innerHTML='<p>Map could not load.</p>';
+  wx();}
+
+/* ---------- screens 4,5: voice + tiles ---------- */
+function micBlock(parse,hint){
+  var v=S.v;return '<button class="mic'+(v.listening?' on':'')+'" data-a="mic" aria-label="Speak" '+(SR?'':'disabled')+'>'+ICON.mic+'</button>'+
+    '<p class="small" style="text-align:center">'+(SR?(v.listening?"Listening… tap to stop":hint):"Voice isn't available in this browser. Tap a choice below.")+'</p>'+
+    '<div class="say" id="say">'+esc(v.text||"")+'</div>'+(v.msg?'<p class="warn" style="text-align:center">'+v.msg+'</p>':'');}
+function v4(){
+  var v=S.v,h='<h1>What are you growing?</h1>';
+  if(v.result){return h+'<div class="card">You said <b>'+esc(v.result)+'</b>. Is that right?</div><button class="btn p" data-a="cropyes">Yes</button><button class="btn" data-a="retry">No, try again</button>';}
+  h+=micBlock(parseCrop,"Tap and say the crop");
+  h+='<div class="grid">'+Object.keys(CROPS).concat(["other"]).map(function(c){return '<button class="tile" data-a="crop" data-c="'+c+'">'+(c==="other"?"Other":cap(c))+'</button>';}).join("")+'</div>';return h;}
+var TILES=[["This week",3,3],["2–3 weeks ago",17,4],["About a month ago",30,7],["2 months ago",60,10],["3+ months ago",105,15]];
+function v5(){
+  var v=S.v,h='<h1>When did you sow?</h1>';
+  if(v.result){return h+'<div class="card"><b>'+v.result.label+'</b></div><button class="btn p" data-a="sowyes">Yes, confirm</button><button class="btn" data-a="retry">No, try again</button>';}
+  h+=micBlock(parseSowing,'Tap and say, for example, "three weeks ago"');
+  h+='<div class="grid">'+TILES.map(function(t,i){return '<button class="tile" data-a="sow" data-i="'+i+'">'+t[0]+'</button>';}).join("")+'</div>';return h;}
+
+/* ---------- screen 6: home ---------- */
+function advice(){var w=S.weather;if(!w||!w.days)return "Good week for field work.";
+  var n5=w.days.slice(7,12),b=n5[0];n5.forEach(function(d){if(d.mm>b.mm)b=d;});
+  if(b&&b.mm>=10)return "Heavy rain expected on "+DAYS[b.d.getDay()]+" ("+Math.round(b.mm)+" mm): don't spray or apply fertiliser before then.";
+  if(w.days.slice(0,7).reduce(function(a,d){return a+d.mm;},0)<1)return "No rain for a week: check soil moisture before irrigating.";
+  return "Good week for field work.";}
+function v6(){
+  var a=fmtAreas(S.field.m2),mid=addDays(S.sow.from,Math.round((S.sow.to-S.sow.from)/864e5/2)),wk=Math.max(1,Math.floor((Date.now()-mid)/6048e5)+1),el=Math.round((S.tEnd-S.t0)/1000);
+  var notes=S.notes.map(function(n){return '<div class="card"><span class="small">'+n.time+'</span><br>'+esc(n.text)+'</div>';}).join("");
+  return '<h1>Field 1</h1><div class="card"><p><b>'+a.acres.toFixed(2)+' acres</b> ('+Math.round(a.cents)+' cents)</p><p>Crop: <b>'+cap(S.crop)+'</b></p><p>Sowed '+S.sow.label.replace(/^Around/,"around")+'</p><span class="chip">Growing — week '+wk+'</span></div>'+
+    '<div class="act">'+advice()+'</div>'+micBlock(null,"Tap and say a note").replace('data-a="mic"','data-a="note"')+
+    '<div class="grid">'+["Watered","Weeded","Sprayed","Saw pests"].map(function(t){return '<button class="tile" data-a="qnote" data-t="'+t+'">'+t+'</button>';}).join("")+'</div>'+
+    (notes?'<h2>Notes</h2>'+notes:'')+
+    (S.mode==="worker"?'<button class="btn soil" data-a="again">Register another farmer</button>':'')+
+    '<p class="small">Time to set up: '+pad(Math.floor(el/60))+':'+pad(el%60)+' · keyboard presses: '+S.keys+' · taps: '+S.taps+'</p>';}
+function addNote(t){S.notes.unshift({text:t,time:new Date().toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})});}
+
+/* ---------- events ---------- */
+var A={
+  back:function(){if(S.screen===1)S.otp=null;goTo(Math.max(0,S.screen-1));},
+  mode:function(e){S.mode=e.dataset.m;goTo(1);},
+  key:function(e){var k=e.dataset.k;if(k==="bs")S.phone=S.phone.slice(0,-1);else if(k==="clr")S.phone="";else if(S.phone.length<10)S.phone+=k;render();},
+  send:function(){var code="";for(var i=0;i<4;i++)code+=Math.floor(Math.random()*10);S.otp={code:code,shown:false};render();
+    T.timers.push(setTimeout(function(){if(S.otp){S.otp.shown=true;render();}},1500));},
+  next:function(){goTo(S.screen+1);},
+  here:function(){
+    if(!navigator.geolocation)return geoErr("Location isn't available on this device.");
+    S.loc={phase:"choose",busy:true};panel();
+    navigator.geolocation.getCurrentPosition(function(p){setSquare({lat:p.coords.latitude,lng:p.coords.longitude},p.coords.accuracy,2);},
+      function(e){geoErr(e.code===1?"Location is blocked for this site.":"Couldn't get your location.");},{enableHighAccuracy:true,timeout:15000,maximumAge:0});},
+  sample:function(){setSquare(SAMPLE,null,2);},
+  walk:function(){startWalk(false);},
+  demo:function(){startWalk(true);},
+  finish:finish,
+  redo:function(){cleanup();S.loc={phase:"choose"};render();},
+  size:function(e){var l=S.loc;setSquare(l.center,l.acc,l.si+parseInt(e.dataset.d,10));},
+  yes:function(){S.field={poly:S.loc.poly,m2:S.loc.m2};goTo(3);},
+  mic:function(){toggleMic(S.screen===4?parseCrop:parseSowing);},
+  retry:function(){S.v={};render();},
+  crop:function(e){S.crop=e.dataset.c==="other"?"other crop":e.dataset.c;goTo(5);},
+  cropyes:function(){S.crop=S.v.result;goTo(5);},
+  sow:function(e){var t=TILES[+e.dataset.i];S.v={result:rangeAgo(t[1],t[2])};render();},
+  sowyes:function(){S.sow=S.v.result;goTo(6);},
+  note:function(){if(T.rec){T.rec();return;}S.v={listening:true,text:""};render();
+    T.rec=listen(function(s){S.v.text=s;var el=$("say");if(el)el.textContent=s;},function(f){T.rec=null;S.v={};if(f)addNote(f);render();},function(m){S.v={msg:m};T.rec=null;render();});
+    if(!T.rec)render();},
+  qnote:function(e){addNote(e.dataset.t);render();},
+  again:newFarmer
+};
+document.addEventListener("click",function(ev){S.taps++;var e=ev.target.closest&&ev.target.closest("[data-a]");if(e&&!e.disabled&&$("app").contains(e))A[e.dataset.a](e);});
+document.addEventListener("keydown",function(){S.keys++;});
+
+window.__proto={areaOfLatLngs:areaOfLatLngs,parseCrop:parseCrop,parseSowing:parseSowing};
+render();
+})();
+</script></body></html>
