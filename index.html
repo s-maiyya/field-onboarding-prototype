@@ -76,6 +76,8 @@ p{margin:4px 0 10px}
 .step{min-width:76px;min-height:52px;border-radius:12px;border:1.5px solid var(--ink);background:transparent;font-weight:700}
 .step:disabled{opacity:.35}
 .dayn{text-align:center;color:var(--mute);margin-bottom:4px}
+.mgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:8px 0 12px}.mgrid .chip{justify-content:center;padding:6px 4px}
+.tin{width:100%;min-height:52px;font:inherit;font-size:19px;padding:10px 14px;border:1.5px solid var(--ink);border-radius:12px;background:#fff;margin:6px 0}
 #strip{display:flex;gap:4px;overflow-x:auto;padding:4px 0 8px;margin:12px -18px 0;padding-left:18px;padding-right:18px;scrollbar-width:thin}
 .cell{flex:none;width:46px;text-align:center}
 .cell small{display:block;height:16px;font-size:12px;color:var(--mute);text-align:left;white-space:nowrap}
@@ -149,6 +151,19 @@ function parseCrop(text){
   list.sort(function(a,b){return b[0].length-a[0].length;});
   for(var i=0;i<list.length;i++){var re=new RegExp("(^|[^a-z])"+list[i][0].replace(/ /g,"\\s+")+"(s|es)?([^a-z]|$)");if(re.test(t))return list[i][1];}
   return null;}
+/* crop kinds: "day" short-season (exact sowing date), "month" long-season or unknown crop (planting month), "age" tree crops (tree age) */
+var LONG={banana:1,sugarcane:1},TREE={coconut:1},AGES=[["young","Under 3 years"],["mid","3 to 6 years"],["bearing","Older, giving nuts"]],MAXMON=17;
+function kindOf(s){return s.custom?"month":TREE[s.crop]?"age":LONG[s.crop]?"month":"day";}
+function cropName(s){return s.custom?s.crop:cap(s.crop);}
+function ccol(s){return s.crop?(s.custom?CCOL.other:CCOL[s.crop]):"#ffffff";}
+function cleanCrop(t){t=String(t||"").toLowerCase().replace(/[^a-z\s-]/g," ").replace(/\b(i|we|my|our|am|are|is|it|its|have|has|grow|growing|grown|planted|plant|crop|the|a|an|this|that|season|field|plot|of|in|there)\b/g," ").replace(/\s+/g," ").trim();
+  return t?cap(t.slice(0,30)):null;}
+function monthsAgo(d){var n=today();return (n.getFullYear()-d.getFullYear())*12+n.getMonth()-d.getMonth();}
+function monthStart(i){var n=today();return new Date(n.getFullYear(),n.getMonth()-i,1);}
+function timingLabel(s){var t=s.timing;if(!t)return "";
+  if(t.kind==="day"){var d=Math.max(0,daysBetween(t.date,today()));return "Day "+d+(s.crop==="paddy"?(t.method==="tp"?" after transplanting":" after sowing"):"");}
+  if(t.kind==="month"){var n=monthsAgo(t.date);return n===0?(t.regrow?"Regrowth, cut this month":"Planted this month"):n+" month"+(n>1?"s":"")+(t.regrow?" since last harvest (regrowth)":" since planting");}
+  return "Trees "+AGES.filter(function(a){return a[0]===t.age;})[0][1].toLowerCase().replace("older, ","");}
 function midnight(d){return new Date(d.getFullYear(),d.getMonth(),d.getDate());}
 function addDays(d,n){var x=midnight(d);x.setDate(x.getDate()+n);return x;}
 function today(){return midnight(new Date());}
@@ -254,7 +269,7 @@ function listen(onText,onEnd,onErr){ // returns stop(); reports problems through
   return function(){try{r.stop();}catch(e){}};}
 function toggleMic(parse,onResult){ // parse(text)->value|null ; onResult(value,text)
   if(T.rec){T.rec();return;}
-  var tok=++T.tok;S.v={listening:true,text:"",msg:""};render();
+  var tok=++T.tok;S.v={listening:true,text:"",msg:"",other:S.v.other,typing:S.v.typing};render();
   T.rec=listen(function(s){if(tok!==T.tok)return;S.v.text=s;var el=$("say");if(el)el.textContent=s;},
     function(final){if(tok!==T.tok)return;S.v.listening=false;T.rec=null;var res=final?parse(final):null;
       if(res!=null)onResult(res,final);else S.v.msg=final?"Didn't recognise that. Try again or tap a choice below.":"Didn't hear anything. Try again or tap a choice below.";
@@ -297,7 +312,7 @@ function drawFarm(){
   if(!hasMap())return;T.farmLG.clearLayers();
   var dim=(S.screen==="mark"||S.screen==="confirm");
   S.farm.plots.forEach(function(p){
-    p.sections.forEach(function(s){var col=s.crop?CCOL[s.crop]:"#ffffff",hl=!dim&&S.cur&&S.cur.s===s.id&&(S.screen==="crop"||S.screen==="sow");
+    p.sections.forEach(function(s){var col=ccol(s),hl=!dim&&S.cur&&S.cur.s===s.id&&(S.screen==="crop"||S.screen==="sow");
       L.polygon(s.poly,{color:hl?MARI:"#ffffff",weight:hl?3:1,dashArray:hl?"6 4":null,fillColor:col,fillOpacity:dim?.12:(s.crop?.55:.15),opacity:dim?.4:.9,interactive:false}).addTo(T.farmLG);});
     var o=L.polygon(p.poly,{color:MARI,weight:dim?2:3,fill:false,opacity:dim?.45:1,interactive:false}).addTo(T.farmLG);
     if(!dim)o.bindTooltip(esc(p.name),{permanent:true,direction:"center",className:"plbl"});});}
@@ -400,18 +415,33 @@ function vValue(){var p=curPlot();return '<h1>Weather for '+esc(p.name)+'</h1><d
 function secTitle(){var p=curPlot(),s=curSec();if(!p||!s)return "";var i=p.sections.indexOf(s);return p.sections.length>1?p.name+", part "+(i+1):p.name;}
 function vCrop(){
   var v=S.v,h='<h1>What is growing in '+esc(secTitle())+'?</h1>';
-  if(v.result)return h+'<p style="font-size:20px"><b>'+cap(v.result)+'?</b></p><button class="btn p" data-a="cropyes">Yes</button><button class="btn" data-a="retry">No</button>';
+  if(v.result){var nm=v.result.custom||cap(v.result);
+    return h+'<p style="font-size:20px"><b>'+esc(nm)+'?</b></p>'+(v.result.custom?'<p class="small">Not in our list. We\'ll save it with this name.</p>':'')+'<button class="btn p" data-a="cropyes">Yes</button><button class="btn" data-a="retry">No</button>';}
+  if(v.other){h+='<p class="mute">Say the name of the crop.</p>'+micRow("Tap and say the crop name");
+    if(v.typing||S.mode==="worker"||!SR)h+='<input class="tin" id="cropin" placeholder="Type the crop name" autocomplete="off"><button class="btn p" data-a="croptyped">Use this name</button>';
+    else h+='<button class="btn txt" data-a="croptype">Type it instead</button>';
+    return h+'<button class="btn txt" data-a="retry">Back to the list</button>';}
   h+=micRow("Tap and say the crop");
-  h+='<div class="chips">'+Object.keys(CROPS).concat(["other"]).map(function(c){return '<button class="chip" data-a="crop" data-c="'+c+'"><i class="dot" style="background:'+CCOL[c]+'"></i>'+(c==="other"?"Other":cap(c))+'</button>';}).join("")+'</div>';
+  h+='<div class="chips">'+Object.keys(CROPS).concat(["other"]).map(function(c){return '<button class="chip" data-a="'+(c==="other"?"cropother":"crop")+'" data-c="'+c+'"><i class="dot" style="background:'+CCOL[c]+'"></i>'+(c==="other"?"Other":cap(c))+'</button>';}).join("")+'</div>';
   return h;}
 
 /* sowing date */
 function sowIdx(){return Math.max(0,Math.min(MAXSOW,daysBetween(S.sowSel,today())));}
-function vSow(){
-  var idx=sowIdx(),d=addDays(today(),-idx),h='<h1>When did you sow '+esc(secTitle())+'?</h1>';
+function vSow(){var s=curSec(),k=kindOf(s);
+  if(k==="age"){return '<h1>How old are the '+esc(cropName(s).toLowerCase())+' trees in '+esc(secTitle())+'?</h1><div class="opts">'+
+    AGES.map(function(a){return '<button class="btn'+(S.ageSel===a[0]?' p':'')+'" data-a="age" data-g="'+a[0]+'">'+a[1]+'</button>';}).join("")+'</div>';}
+  if(k==="month"){var long=!s.custom,h='<h1>When did you plant '+esc(cropName(s).toLowerCase())+' in '+esc(secTitle())+'?</h1>';
+    if(long)h+='<div class="chips"><button class="chip'+(!S.regrow?' sel':'')+'" data-a="regrow" data-r="0">First crop</button><button class="chip'+(S.regrow?' sel':'')+'" data-a="regrow" data-r="1">Regrowth after a harvest</button></div>';
+    h+=micRow('Say "eight months ago"');
+    if(S.regrow)h+='<p class="small">Pick the month of the last harvest.</p>';
+    var cells="";for(var i=0;i<=MAXMON;i++){var m=monthStart(i);cells+='<button class="chip'+(S.monSel===i?' sel':'')+'" data-a="sowmon" data-i="'+i+'">'+MON3[m.getMonth()]+' '+String(m.getFullYear()).slice(2)+'</button>';}
+    h+='<div class="mgrid">'+cells+'</div>';
+    return h+'<button class="btn p" data-a="sowok" '+(S.monSel==null?'disabled':'')+'>That\'s right</button>';}
+  var idx=sowIdx(),d=addDays(today(),-idx),tp=S.method==="tp",verb=s.crop==="paddy"&&tp?"transplant":"sow",h='<h1>When did you '+verb+' '+esc(secTitle())+'?</h1>';
+  if(s.crop==="paddy")h+='<div class="chips"><button class="chip'+(tp?' sel':'')+'" data-a="method" data-m="tp">Transplanted</button><button class="chip'+(!tp?' sel':'')+'" data-a="method" data-m="ds">Sowed seed directly</button></div>';
   h+=micRow('Say "three weeks ago" or "yesterday"');
   h+='<div class="dayrow"><button class="step" data-a="sowd" data-d="-1" '+(idx>=MAXSOW?'disabled':'')+'>−1 day</button><div class="bigday">'+fmtDay(d)+'</div><button class="step" data-a="sowd" data-d="1" '+(idx<=0?'disabled':'')+'>+1 day</button></div>';
-  h+='<div class="dayn">'+(S.sowTouched?'':'<b>Pick or say the day</b> · ')+(idx===0?'Sown today':'Day '+idx+' after sowing')+'</div>';
+  h+='<div class="dayn">'+(S.sowTouched?'':'<b>Pick or say the day</b> · ')+(idx===0?(verb==="transplant"?'Transplanted today':'Sown today'):'Day '+idx+' after '+(verb==="transplant"?'transplanting':'sowing'))+'</div>';
   h+='<button class="btn p" data-a="sowok">That\'s right</button>';
   var cells="";for(var i=MAXSOW;i>=0;i--){var c=addDays(today(),-i);
     cells+='<div class="cell'+(i===idx?' sel':'')+'" data-i="'+i+'"><small>'+((c.getDate()===1||i===MAXSOW)?MON3[c.getMonth()]:'')+'</small><button data-a="sowcell" data-i="'+i+'" aria-label="'+fmtDay(c)+'"><span>'+DAYS[c.getDay()].charAt(0)+'</span><b>'+c.getDate()+'</b></button></div>';}
@@ -428,7 +458,7 @@ function weekAdvice(){var w=S.weather;if(!w||!w.days)return "";
   if(w.days.slice(0,7).reduce(function(a,d){return a+d.mm;},0)<1)return "No rain for a week: check soil moisture before irrigating.";
   return "Good week for field work.";}
 function adviceFor(sec){
-  var day=sec.sowDate?daysBetween(sec.sowDate,today()):null;
+  var day=sec.timing&&sec.timing.kind==="day"?daysBetween(sec.timing.date,today()):null;
   if(sec.crop==="paddy"&&day!=null){if(day>=18&&day<=25)return "First fertiliser dose due around day 21.";if(day>=40&&day<=50)return "Second dose due around day 45.";}
   return "";}
 function vHome(){
@@ -437,8 +467,8 @@ function vHome(){
     return '<div class="plot"><div class="ph"><b>'+esc(p.name)+'</b><span class="mute">'+a.acres.toFixed(2)+' acres</span></div>'+
       p.sections.map(function(s,i){var lab=p.sections.length>1?' <span class="mute">(part '+(i+1)+', '+(s.m2/ACRE).toFixed(2)+' ac)</span>':'';
         if(!s.crop)return '<div class="sec"><i class="dot" style="background:#fff"></i><div><b>Crop not set</b>'+lab+'<br><button class="sbtn" data-a="setcrop" data-p="'+p.id+'" data-s="'+s.id+'">Set crop</button></div></div>';
-        if(!s.sowDate)return '<div class="sec"><i class="dot" style="background:'+CCOL[s.crop]+'"></i><div><b>'+cap(s.crop)+'</b>'+lab+'<br><button class="sbtn" data-a="setsow" data-p="'+p.id+'" data-s="'+s.id+'">Set sowing date</button></div></div>';
-        return '<div class="sec"><i class="dot" style="background:'+CCOL[s.crop]+'"></i><div><b>'+cap(s.crop)+'</b> · Day '+Math.max(0,daysBetween(s.sowDate,today()))+lab+(adviceFor(s)?'<div class="adv">'+adviceFor(s)+'</div>':'')+'</div></div>';}).join("")+'</div>';}).join("");
+        if(!s.timing)return '<div class="sec"><i class="dot" style="background:'+ccol(s)+'"></i><div><b>'+esc(cropName(s))+'</b>'+lab+'<br><button class="sbtn" data-a="setsow" data-p="'+p.id+'" data-s="'+s.id+'">'+(kindOf(s)==="age"?"Set tree age":"Set planting date")+'</button></div></div>';
+        return '<div class="sec"><i class="dot" style="background:'+ccol(s)+'"></i><div><b>'+esc(cropName(s))+'</b> · '+timingLabel(s)+lab+(adviceFor(s)?'<div class="adv">'+adviceFor(s)+'</div>':'')+'</div></div>';}).join("")+'</div>';}).join("");
   h+='<div class="opts">'+opt("addplot","plus","Add another plot","Mark more land")+opt("twocrops","split","This plot has two crops","Draw a dividing line")+
     (S.mode==="worker"?opt("again","worker","Register another farmer","Start again for the next person"):'')+'</div>';
   return h+'<p class="small" style="margin-top:12px">'+vlabel()+' · '+pad(Math.floor(el/60))+':'+pad(el%60)+' · '+S.keys+' key presses · '+S.taps+' taps</p>';}
@@ -517,8 +547,14 @@ function enterMark(){ // auto-centre once on first plot
 
 /* ---------- events ---------- */
 function setSow(d){var i=Math.max(0,Math.min(MAXSOW,daysBetween(d,today())));S.sowSel=addDays(today(),-i);}
-function toSow(){var s=curSec();if(s&&s.sowDate){S.sowSel=s.sowDate;S.sowTouched=true;}else{S.sowSel=addDays(today(),-21);S.sowTouched=false;}go("sow");}
-function setCrop(c){curSec().crop=c;toSow();}
+function toSow(){var s=curSec(),t=s&&s.timing;
+  S.sowSel=addDays(today(),-21);S.sowTouched=false;S.method="tp";S.monSel=null;S.regrow=false;S.ageSel=null;
+  if(t&&t.kind==="day"){S.sowSel=t.date;S.sowTouched=true;S.method=t.method||"tp";}
+  if(t&&t.kind==="month"){S.monSel=monthsAgo(t.date);S.regrow=!!t.regrow;}
+  if(t&&t.kind==="age")S.ageSel=t.age;
+  go("sow");}
+function saveTiming(t){curSec().timing=t;if(S.setup){go("askcrops");return;}if(!S.tEnd)S.tEnd=Date.now();go("home");}
+function setCrop(c){var s=curSec();if(c&&c.custom){s.crop=c.custom;s.custom=true;}else{s.crop=c;s.custom=false;}s.timing=null;toSow();}
 var A={
   back:function(){var s=S.screen;
     if(s==="phone"){S.otp=null;go("start");}
@@ -556,19 +592,29 @@ var A={
   size:function(e){var d=S.draft;setSquare(d.center,d.acc,Math.max(0,Math.min(SIZES.length-1,d.si+parseInt(e.dataset.d,10))));},
   redo:function(){go("mark");},
   looks:function(){var d=S.draft,first=!S.farm.plots.length,id=uid(),sid=uid();
-    S.farm.plots.push({id:id,name:nextPlotName(),poly:d.poly,m2:d.m2,sections:[{id:sid,poly:d.poly,m2:d.m2,crop:null,sowDate:null}]});
+    S.farm.plots.push({id:id,name:nextPlotName(),poly:d.poly,m2:d.m2,sections:[{id:sid,poly:d.poly,m2:d.m2,crop:null,timing:null}]});
     S.cur={p:id,s:sid};
     if(first){fetchWeather(d.poly);go("value");}else go("crop");fit(d.poly);},
   vnext:function(){go("crop");},
   mic:function(){
-    if(S.screen==="crop")toggleMic(parseCrop,function(r){S.v.result=r;});
-    else if(S.screen==="sow")toggleMic(parseSowingDate,function(d,txt){setSow(d);S.sowTouched=true;});},
+    if(S.screen==="crop")toggleMic(function(t){var k=parseCrop(t);if(k)return k;var n=cleanCrop(t);return n?{custom:n}:null;},function(r){S.v.result=r;});
+    else if(S.screen==="sow"){var k=kindOf(curSec());if(k==="age")return;
+      toggleMic(parseSowingDate,function(d){if(k==="month")S.monSel=Math.min(MAXMON,monthsAgo(d));else{setSow(d);S.sowTouched=true;}});}},
   retry:function(){S.v={};render();},
   crop:function(e){setCrop(e.dataset.c);},
   cropyes:function(){setCrop(S.v.result);},
   sowcell:function(e){T.keepStrip=true;S.sowSel=addDays(today(),-parseInt(e.dataset.i,10));S.sowTouched=true;render();},
   sowd:function(e){setSow(addDays(S.sowSel,parseInt(e.dataset.d,10)));S.sowTouched=true;render();},
-  sowok:function(){curSec().sowDate=S.sowSel;if(S.setup){go("askcrops");return;}if(!S.tEnd)S.tEnd=Date.now();go("home");},
+  sowok:function(){var s=curSec(),k=kindOf(s);
+    if(k==="month"){if(S.monSel==null)return;saveTiming({kind:"month",date:monthStart(S.monSel),regrow:!s.custom&&S.regrow});}
+    else saveTiming({kind:"day",date:S.sowSel,method:s.crop==="paddy"?S.method:null});},
+  age:function(e){S.ageSel=e.dataset.g;saveTiming({kind:"age",age:e.dataset.g});},
+  sowmon:function(e){S.monSel=parseInt(e.dataset.i,10);render();},
+  regrow:function(e){S.regrow=e.dataset.r==="1";render();},
+  method:function(e){S.method=e.dataset.m;render();},
+  cropother:function(){S.v={other:true};render();},
+  croptype:function(){S.v={other:true,typing:true};render();var i=$("cropin");if(i)i.focus();},
+  croptyped:function(){var i=$("cropin"),n=i&&cleanCrop(i.value);if(!n){i&&i.focus();return;}var k=parseCrop(n);S.v={result:k||{custom:n}};render();},
   setcrop:function(e){S.cur={p:+e.dataset.p,s:+e.dataset.s};go("crop");},
   setsow:function(e){S.cur={p:+e.dataset.p,s:+e.dataset.s};toSow();},
   addplot:function(){S.cur=null;enterMark();},
@@ -578,7 +624,7 @@ var A={
   splitredo:function(){var p=plotById(S.split.plotId);S.split={phase:"line",plotId:p.id,points:[],pieces:null,secId:null,msg:""};render();},
   splitok:function(){var sp=S.split;if(!sp.pieces)return;var p=plotById(sp.plotId),sec=p.sections.filter(function(s){return s.id===sp.secId;})[0],nid=uid();
     var big=sp.pieces[0],sm=sp.pieces[1];sec.poly=big.poly;sec.m2=big.m2;
-    var ns={id:nid,poly:sm.poly,m2:sm.m2,crop:null,sowDate:null};p.sections.push(ns);S.cur={p:p.id,s:nid};S.split=null;go("crop");},
+    var ns={id:nid,poly:sm.poly,m2:sm.m2,crop:null,timing:null};p.sections.push(ns);S.cur={p:p.id,s:nid};S.split=null;go("crop");},
   again:function(){resetFarm();if(hasMap()){T.map.setView([SAMPLE.lat,SAMPLE.lng],17);}go("phone");}
 };
 function boot(){
@@ -588,7 +634,7 @@ function boot(){
   document.addEventListener("keydown",function(){S.keys++;});
   render();}
 
-window.__proto={areaOfLatLngs:areaOfLatLngs,parseCrop:parseCrop,parseSowingDate:parseSowingDate,splitPoly:splitPoly,splitByLine:splitByLine};
+window.__proto={cleanCrop:cleanCrop,kindOf:kindOf,timingLabel:timingLabel,areaOfLatLngs:areaOfLatLngs,parseCrop:parseCrop,parseSowingDate:parseSowingDate,splitPoly:splitPoly,splitByLine:splitByLine};
 if(document.getElementById("sheet"))boot();
 })();
 </script></body></html>
