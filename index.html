@@ -105,6 +105,7 @@ p{margin:4px 0 10px}
 <div id="sheet"></div>
 </div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/polygon-clipping@0.15.7/dist/polygon-clipping.umd.min.js"></script>
 <script>
 (function(){
 "use strict";
@@ -192,6 +193,32 @@ function splitPoly(poly,A,B,refM2){
   var ref=refM2||areaOfLatLngs(poly);
   if(res[0].m2<ref*0.02||res[1].m2<ref*0.02)return null;
   res.sort(function(x,y){return y.m2-x.m2;});return res;}
+/* split a polygon by a bendable line (2+ points). Ends are stretched past the plot edge.
+   Uses polygon-clipping; falls back to a straight cut first->last point if it didn't load. */
+function splitByLine(poly,pts,refM2){
+  if(!poly||poly.length<3||!pts||pts.length<2)return null;
+  var PC=window.polygonClipping;if(!PC)return splitPoly(poly,pts[0],pts[pts.length-1],refM2);
+  var c=centroid(poly),k=111320*Math.cos(c.lat*Math.PI/180);
+  function to(p){p=ll(p);return[(p.lng-c.lng)*k,(p.lat-c.lat)*111320];}
+  function from(q){return[c.lat+q[1]/111320,c.lng+q[0]/k];}
+  function ar(r){var s=0;for(var i=0;i<r.length;i++){var a=r[i],b=r[(i+1)%r.length];s+=a[0]*b[1]-b[0]*a[1];}return Math.abs(s)/2;}
+  var xy=poly.map(to),e=pts.map(to),ext=Math.sqrt(ar(xy))*4+50;
+  function push(p,q){var d=Math.hypot(p[0]-q[0],p[1]-q[1])||1;return[p[0]+(p[0]-q[0])/d*ext,p[1]+(p[1]-q[1])/d*ext];}
+  if(Math.hypot(e[0][0]-e[e.length-1][0],e[0][1]-e[e.length-1][1])<0.5)return null;
+  e[0]=push(e[0],e[1]);e[e.length-1]=push(e[e.length-1],e[e.length-2]);
+  var f=e[0],l=e[e.length-1],dx=l[0]-f[0],dy=l[1]-f[1],dd=Math.hypot(dx,dy),nx=-dy/dd*ext*2,ny=dx/dd*ext*2;
+  var H=e.concat([[l[0]+nx,l[1]+ny],[f[0]+nx,f[1]+ny]]);
+  function biggest(mp){var best=null,ba=0;(mp||[]).forEach(function(pg){var r=pg[0].slice(0,-1),a=ar(r);if(a>ba){ba=a;best=r;}});return best;}
+  try{var A=biggest(PC.intersection([xy],[H])),B=biggest(PC.difference([xy],[H]));}catch(err){return null;}
+  if(!A||!B||A.length<3||B.length<3||ar(A)+ar(B)<ar(xy)*0.98)return null;
+  var res=[A,B].map(function(r){var p=r.map(from);return{poly:p,m2:areaOfLatLngs(p)};});
+  var ref=refM2||areaOfLatLngs(poly);
+  if(res[0].m2<ref*0.02||res[1].m2<ref*0.02)return null;
+  res.sort(function(x,y){return y.m2-x.m2;});return res;}
+function extendPath(poly,pts){ // copy of pts with both ends stretched beyond the polygon (for drawing)
+  if(pts.length<2)return pts.slice();var n=pts.length,r=Math.sqrt(areaOfLatLngs(poly))*0.25;
+  function push(p,q){var d=distM(ll(p),ll(q))||1,t=r/d;return[p[0]+(p[0]-q[0])*t,p[1]+(p[1]-q[1])*t];}
+  return [push(pts[0],pts[1])].concat(pts.slice(1,-1),[push(pts[n-1],pts[n-2])]);}
 function extendLine(poly,A,B){ // endpoints of line A-B stretched well beyond the polygon
   var c=centroid(poly),k=111320*Math.cos(c.lat*Math.PI/180),a=ll(A),b=ll(B);
   var ax=(a.lng-c.lng)*k,ay=(a.lat-c.lat)*111320,bx=(b.lng-c.lng)*k,by=(b.lat-c.lat)*111320,d=Math.hypot(bx-ax,by-ay)||1;
@@ -261,7 +288,7 @@ function initMap(){
   T.farmLG=L.layerGroup().addTo(m);T.draftLG=L.layerGroup().addTo(m);
   m.on("click",function(e){var p=[e.latlng.lat,e.latlng.lng];
     if(S.screen==="mark"&&S.loc.phase==="draw"){S.loc.points.push(p);drawDraft();render();}
-    else if(S.screen==="split"&&S.split&&S.split.phase==="line"&&S.split.points.length<2){S.split.points.push(p);if(S.split.points.length===2)tryDivide();drawDraft();render();}});
+    else if(S.screen==="split"&&S.split&&S.split.phase==="line"){insertPt(S.split.points,p);tryDivide();render();}});
   window.addEventListener("resize",function(){m.invalidateSize();});}
 function fit(pts,maxZ){
   if(!hasMap()||!pts||!pts.length)return;
@@ -293,8 +320,11 @@ function drawDraft(){
     if(canDrag(d))handles(g,d.poly,function(){d.m2=areaOfLatLngs(d.poly);d.sq=false;pg.setLatLngs(d.poly);
         var h=$("cfh");if(h)h.textContent=nextPlotName()+" · "+(d.m2/ACRE).toFixed(2)+" acres";});}
   else if(S.screen==="split"&&S.split){var sp=S.split,pl=plotById(sp.plotId);
-    if(sp.phase==="review"&&sp.pieces){sp.pieces.forEach(function(pc,i){L.polygon(pc.poly,{color:"#fff",weight:2,fillColor:i?"#4FC3F7":MARI,fillOpacity:.5,interactive:false}).addTo(g);});}
-    if(sp.points.length){dots(sp.points);if(sp.points.length===2&&pl)L.polyline(extendLine(pl.poly,sp.points[0],sp.points[1]),{color:"#fff",weight:3,dashArray:"8 6",interactive:false}).addTo(g);}}}
+    if(sp.phase!=="line"||!pl)return;
+    var pcs=[0,1].map(function(i){return L.polygon(sp.pieces?sp.pieces[i].poly:[],{color:"#fff",weight:2,fillColor:i?"#4FC3F7":MARI,fillOpacity:.5,interactive:false}).addTo(g);});
+    var ln=L.polyline(sp.points.length>=2?extendPath(pl.poly,sp.points):[],{color:"#fff",weight:3,dashArray:"8 6",interactive:false}).addTo(g);
+    handles(g,sp.points,function(){tryDivide();ln.setLatLngs(sp.points.length>=2?extendPath(pl.poly,sp.points):[]);
+      pcs.forEach(function(pg,i){pg.setLatLngs(sp.pieces?sp.pieces[i].poly:[]);});});}}
 
 /* ---------- views ---------- */
 function opt(a,ic,label,hint,extra){return '<button class="opt" data-a="'+a+'" '+(extra||'')+'><span class="ic">'+ICON[ic]+'</span><span><b>'+label+'</b><span>'+hint+'</span></span></button>';}
@@ -420,19 +450,26 @@ function vHome(){
 function vSplit(){
   var sp=S.split,h="";
   if(sp.phase==="pick"){h='<h1>Which plot has two crops?</h1><div class="opts">'+S.farm.plots.map(function(p){return opt("splitpick","pick",esc(p.name),(p.m2/ACRE).toFixed(2)+" acres",'data-p="'+p.id+'"');}).join("")+'</div><button class="btn txt" data-a="back">Cancel</button>';}
-  else if(sp.phase==="line"){var n=sp.points.length;h='<h1>Tap two points to draw the dividing line</h1><p class="mute">'+(n===0?'Tap the first point.':'Tap the second point.')+'</p>'+(sp.msg?'<p class="warn">'+sp.msg+'</p>':'')+
-    '<button class="btn" data-a="splitredo" '+(n?'':'disabled')+'>Clear points</button><button class="btn txt" data-a="back">Cancel</button>';}
-  else{var big=sp.pieces[0],sm=sp.pieces[1],pl=plotById(sp.plotId),sec=pl.sections.filter(function(s){return s.id===sp.secId;})[0];
-    h='<h1>Two pieces</h1><div class="plot"><div class="ph"><b><i class="dot" style="background:'+MARI+'"></i> Larger</b><span>'+(big.m2/ACRE).toFixed(2)+' acres</span></div>'+
-      '<div class="ph" style="margin-top:6px"><b><i class="dot" style="background:#4FC3F7"></i> Smaller</b><span>'+(sm.m2/ACRE).toFixed(2)+' acres</span></div></div>'+
-      '<p class="mute">The larger piece keeps '+(sec.crop?cap(sec.crop):'its crop setting')+'. Next you set the crop and sowing date for the smaller one.</p>'+
-      '<button class="btn p" data-a="splitok">Split here</button><button class="btn" data-a="splitredo">Redo line</button>';}
+  else{var n=sp.points.length,ok=!!sp.pieces;
+    h='<h1>Draw where the crops meet</h1><p class="mute">'+(n===0?'Tap a point on the line between the two crops.':n===1?'Tap the next point along the line.':'Tap more points to follow a bend. Drag a point to adjust.')+'</p>';
+    if(ok){var big=sp.pieces[0],sm=sp.pieces[1],pl=plotById(sp.plotId),sec=pl.sections.filter(function(s){return s.id===sp.secId;})[0];
+      h+='<div class="plot"><div class="ph"><b><i class="dot" style="background:'+MARI+'"></i> Larger</b><span>'+(big.m2/ACRE).toFixed(2)+' acres</span></div>'+
+        '<div class="ph" style="margin-top:6px"><b><i class="dot" style="background:#4FC3F7"></i> Smaller</b><span>'+(sm.m2/ACRE).toFixed(2)+' acres</span></div></div>'+
+        '<p class="small">The larger piece keeps '+(sec.crop?cap(sec.crop):'its crop setting')+'. Next you set the crop for the smaller one.</p>';}
+    else if(n>=2)h+='<p class="warn">This line doesn\'t cut the plot cleanly into two pieces. Make sure it runs from one edge to the other without folding back.</p>';
+    h+='<button class="btn p" data-a="splitok" '+(ok?'':'disabled')+'>Split here</button><div class="two"><button class="btn" data-a="splitredo" '+(n?'':'disabled')+'>Start again</button><button class="btn txt" data-a="back">Cancel</button></div>';}
   return h;}
 function startSplit(plotId){var p=plotById(plotId);S.split={phase:"line",plotId:plotId,points:[],pieces:null,secId:null,msg:""};render();fit(p.poly);}
-function tryDivide(){var sp=S.split,p=plotById(sp.plotId),best=null;
-  p.sections.forEach(function(s){var r=splitPoly(s.poly,sp.points[0],sp.points[1],p.m2);if(r&&(!best||s.m2>best.s.m2))best={s:s,r:r};});
-  if(!best){sp.points=[];sp.msg="That line doesn't cut a section into two pieces big enough. Try again.";return;}
-  sp.pieces=best.r;sp.secId=best.s.id;sp.phase="review";sp.msg="";}
+// add a tap where it bends the line least (so a tap between two points becomes a bend, not a fold-back)
+function insertPt(pts,p){if(pts.length<2){pts.push(p);return;}
+  function d(a,b){return distM({lat:a[0],lng:a[1]},{lat:b[0],lng:b[1]});}
+  var bi=pts.length,bc=d(pts[pts.length-1],p);if(d(pts[0],p)<bc){bi=0;bc=d(pts[0],p);}
+  for(var i=1;i<pts.length;i++){var c=d(pts[i-1],p)+d(p,pts[i])-d(pts[i-1],pts[i]);if(c<bc){bc=c;bi=i;}}
+  pts.splice(bi,0,p);}
+function tryDivide(){var sp=S.split,p=plotById(sp.plotId),best=null;sp.pieces=null;sp.secId=null;
+  if(sp.points.length<2)return;
+  p.sections.forEach(function(s){var r=splitByLine(s.poly,sp.points,p.m2);if(r&&(!best||s.m2>best.s.m2))best={s:s,r:r};});
+  if(best){sp.pieces=best.r;sp.secId=best.s.id;}}
 
 /* notes */
 function noteHtml(n){var p=plotById(n.plotId);return '<div class="note"><span class="small">'+n.time+(p?' · '+esc(p.name):'')+'</span><br>'+esc(n.text)+'</div>';}
@@ -557,7 +594,7 @@ var A={
     if(S.farm.plots.length===1){go("split");startSplit(S.farm.plots[0].id);}else go("split");},
   splitpick:function(e){startSplit(+e.dataset.p);},
   splitredo:function(){var p=plotById(S.split.plotId);S.split={phase:"line",plotId:p.id,points:[],pieces:null,secId:null,msg:""};render();},
-  splitok:function(){var sp=S.split,p=plotById(sp.plotId),sec=p.sections.filter(function(s){return s.id===sp.secId;})[0],nid=uid();
+  splitok:function(){var sp=S.split;if(!sp.pieces)return;var p=plotById(sp.plotId),sec=p.sections.filter(function(s){return s.id===sp.secId;})[0],nid=uid();
     var big=sp.pieces[0],sm=sp.pieces[1];sec.poly=big.poly;sec.m2=big.m2;
     var ns={id:nid,poly:sm.poly,m2:sm.m2,crop:null,sowDate:null};p.sections.push(ns);S.cur={p:p.id,s:nid};S.split=null;go("crop");},
   notes:function(){S.notePlot=S.farm.plots[S.farm.plots.length-1].id;go("note");},
@@ -573,7 +610,7 @@ function boot(){
   document.addEventListener("keydown",function(){S.keys++;});
   render();}
 
-window.__proto={areaOfLatLngs:areaOfLatLngs,parseCrop:parseCrop,parseSowingDate:parseSowingDate,splitPoly:splitPoly};
+window.__proto={areaOfLatLngs:areaOfLatLngs,parseCrop:parseCrop,parseSowingDate:parseSowingDate,splitPoly:splitPoly,splitByLine:splitByLine};
 if(document.getElementById("sheet"))boot();
 })();
 </script></body></html>
