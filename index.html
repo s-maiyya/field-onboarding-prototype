@@ -262,7 +262,7 @@ var S;
 function variantFromHash(){return (typeof location!=="undefined"&&location.hash==="#all-at-once")?"aao":"prog";}
 function vlabel(){return S.variant==="aao"?"Everything up front":"Step by step";}
 function fresh(keepMode){return{variant:variantFromHash(),setup:false,screen:"start",mode:keepMode||null,phone:"",otp:null,farm:{plots:[]},cur:null,loc:{phase:"choose"},draft:null,
-  weather:null,v:{},sowSel:null,sowTouched:false,split:null,t0:null,tEnd:null,keys:0,taps:0,seq:0,centered:false};}
+  weather:null,v:{},sowSel:null,sowTouched:false,split:null,inp:{what:[],when:null},prob:{text:"",tags:[]},t0:null,tEnd:null,keys:0,taps:0,seq:0,centered:false};}
 S=fresh();
 var T={map:null,farmLG:null,draftLG:null,me:null,timers:[],watch:null,rec:null,tok:0,wxTimer:null,keepStrip:false};
 var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -492,12 +492,46 @@ function mountStrip(prev){var st=$("strip");if(!st)return;
   else{var sel=st.querySelector(".sel");if(sel)st.scrollLeft=sel.offsetLeft-(st.clientWidth-sel.offsetWidth)/2;}
   T.keepStrip=false;}
 
+/* inputs + problems */
+function vInputs(){var s=curSec(),c=cropName(s).toLowerCase(),x=S.inp,h='<h1>Any manure or fertiliser on '+esc(c)+' in '+esc(secTitle())+' so far?</h1>';
+  h+=micRow('Say "urea two weeks ago" or "cow dung at planting"');
+  h+='<div class="chips">'+INPUTS.map(function(i){return '<button class="chip'+(x.what.indexOf(i[0])>=0?' sel':'')+'" data-a="inp" data-k="'+i[0]+'">'+i[1]+'</button>';}).join("")+'</div>';
+  if(x.what.length)h+='<h2>When?</h2><div class="chips">'+WHEN.map(function(w){return '<button class="chip'+(x.when===w[0]?' sel':'')+'" data-a="inpwhen" data-w="'+w[0]+'">'+w[1]+'</button>';}).join("")+'</div>';
+  return h+'<div class="stick">'+(x.what.length?'<button class="btn p" data-a="inpsave">Save</button>':'')+'<button class="btn'+(x.what.length?'':' p')+'" data-a="inpnone">Nothing yet</button></div>';}
+function vProb(){var s=curSec(),c=cropName(s).toLowerCase(),x=S.prob,v=S.v,h='<h1>Any pest or disease problems on '+esc(c)+'?</h1>';
+  h+=micRow(x.text?"Tap to add more":"Tap and tell us what you see");
+  if(x.text)h+='<div class="plot"><p class="small" style="margin:0">You said</p><p style="margin:4px 0 0">“'+esc(x.text)+'”</p>'+(x.tags.length?'<p class="small" style="margin:8px 0 0">We noted: '+esc(x.tags.join(", "))+'</p>':'')+'</div>';
+  if(!x.text&&(v.typing||S.mode==="worker"||!SR))h+='<textarea class="tin" id="probin" rows="3" placeholder="Describe the problem"></textarea><button class="btn" data-a="probtyped">Use this</button>';
+  else if(!x.text)h+='<button class="btn txt" data-a="probtype">Type it instead</button>';
+  if(x.text)return h+'<button class="btn p" data-a="probsave">Save</button><button class="btn" data-a="probclear">Clear</button>';
+  return h+'<button class="btn p" data-a="probnone">No problems</button>';}
+function afterSection(){if(S.setup){go("askcrops");return;}finishSetup();}
+
 /* home */
 function weekAdvice(){var w=S.weather;if(!w||!w.days)return "";
   var n5=w.days.slice(7,12),b=n5.filter(function(d){return d.mm>=10;})[0];
   if(b)return "Heavy rain expected from "+DAYS[b.d.getDay()]+" ("+Math.round(b.mm)+" mm): don't spray or fertilise before then.";
   if(w.days.slice(0,7).reduce(function(a,d){return a+d.mm;},0)<1)return "No rain for a week: check soil moisture before irrigating.";
   return "Good week for field work.";}
+/* farmer inputs: manure / fertiliser applied, pest or disease problems (collected only; no advice uses them yet) */
+var INPUTS=[["fym","Cow dung / farmyard manure",["cow dung","dung","farmyard manure","fym","gobar","manure"]],["compost","Compost / vermicompost",["vermicompost","compost"]],
+  ["neem","Neem cake",["neem cake","neem"]],["urea","Urea",["urea"]],["dap","DAP",["dap","d a p","diammonium"]],["potash","Potash",["potash","mop","muriate"]],
+  ["npk","NPK complex",["complex","npk","17 17 17","19 19 19"]],["other","Other fertiliser",["fertiliser","fertilizer","zinc","gypsum","super phosphate","ammonium sulphate","micronutrient"]]];
+var WHEN=[["sow","At planting",null],["wk","This week",3],["2w","2–3 weeks ago",17],["1m","About a month ago",30],["early","Earlier",60],["ns","Not sure",null]];
+var PROBS=[["Yellowing leaves",/yellow/],["Leaves eaten",/\bhole|eaten|eating|chew/],["Worms or borers",/worm|caterpillar|larva|borer|grub/],
+  ["Insects",/insect|\bbugs?\b|hopper|aphid|\bfl(y|ies)\b|whitefly|\bmites?\b|thrip|\bants?\b|beetle/],["Spots or patches",/spot|patch|blast|blight|burn/],
+  ["Wilting or drying",/wilt|droop|dry|drying|dying/],["Rot",/\brot|rotting|rotten/],["Fungus or mould",/fung|mould|mold|white powder|powdery/],
+  ["Animals or birds",/\brats?\b|rodent|\bpigs?\b|\bboars?\b|peacock|monkey|\bbirds?\b|parrot|\bdeer\b|cattle|cows? (eat|graz)/],["Poor growth",/stunt|not grow|small plant|weak|slow/]];
+function parseInputs(t){t=String(t||"").toLowerCase();var what=[];
+  INPUTS.forEach(function(x){if(x[2].some(function(k){return new RegExp("(^|[^a-z])"+k.replace(/ /g,"\\s*")+"([^a-z]|$)").test(t);}))what.push(x[0]);});
+  if(what.length>1)what=what.filter(function(k){return k!=="other";});
+  var when=null;if(/at (sowing|planting|transplanting)|when (i |we )?(sow|plant)|basal/.test(t))when="sow";
+  else{var d=parseSowingDate(t);if(d){var n=daysBetween(d,today());when=n<=7?"wk":n<=24?"2w":n<=45?"1m":"early";}}
+  return what.length||when?{what:what,when:when}:null;}
+function probTags(t){t=String(t||"").toLowerCase();return PROBS.filter(function(p){return p[1].test(t);}).map(function(p){return p[0];});}
+function inputsLine(s){var i=s.inputs;if(!i)return "";if(i.none)return "No manure or fertiliser yet";
+  return INPUTS.filter(function(x){return i.what.indexOf(x[0])>=0;}).map(function(x){return x[1];}).join(", ")+(i.when&&i.when!=="ns"?" · "+WHEN.filter(function(w){return w[0]===i.when;})[0][1].toLowerCase():"");}
+function probLine(s){var p=s.problem;if(!p)return "";if(p.none)return "No problems reported";return "Problem: "+(p.tags.length?p.tags.join(", ").toLowerCase():"“"+p.text+"”");}
 function adviceFor(sec){
   var day=sec.timing&&sec.timing.kind==="day"?daysBetween(sec.timing.date,today()):null;
   if(sec.crop==="paddy"&&day!=null){if(day>=18&&day<=25)return "First fertiliser dose due around day 21.";if(day>=40&&day<=50)return "Second dose due around day 45.";}
@@ -509,7 +543,7 @@ function vHome(){
       p.sections.map(function(s,i){var lab=p.sections.length>1?' <span class="mute">(part '+(i+1)+', '+(s.m2/ACRE).toFixed(2)+' ac)</span>':'';
         if(!s.crop)return '<div class="sec"><i class="dot" style="background:#fff"></i><div><b>Crop not set</b>'+lab+'<br><button class="sbtn" data-a="setcrop" data-p="'+p.id+'" data-s="'+s.id+'">Set crop</button></div></div>';
         if(!s.timing)return '<div class="sec"><i class="dot" style="background:'+ccol(s)+'"></i><div><b>'+esc(cropName(s))+'</b>'+lab+'<br><button class="sbtn" data-a="setsow" data-p="'+p.id+'" data-s="'+s.id+'">'+(kindOf(s)==="age"?"Set tree age":"Set planting date")+'</button></div></div>';
-        return '<div class="sec"><i class="dot" style="background:'+ccol(s)+'"></i><div><b>'+esc(cropName(s))+'</b> · '+timingLabel(s)+lab+(adviceFor(s)?'<div class="adv">'+adviceFor(s)+'</div>':'')+'</div></div>';}).join("")+'</div>';}).join("");
+        return '<div class="sec"><i class="dot" style="background:'+ccol(s)+'"></i><div><b>'+esc(cropName(s))+'</b> · '+timingLabel(s)+lab+(inputsLine(s)?'<div class="small">'+esc(inputsLine(s))+'</div>':'')+(probLine(s)?'<div class="small">'+esc(probLine(s))+'</div>':'')+(adviceFor(s)?'<div class="adv">'+adviceFor(s)+'</div>':'')+'</div></div>';}).join("")+'</div>';}).join("");
   h+='<div class="opts">'+opt("addplot","plus","Add another plot","Mark more land")+opt("twocrops","split","This plot has two crops","Draw a dividing line")+
     (S.mode==="worker"?opt("again","worker","Register another farmer","Start again for the next person"):'')+'</div>';
   return h+'<p class="small" style="margin-top:12px">'+vlabel()+' · '+pad(Math.floor(el/60))+':'+pad(el%60)+' · '+S.keys+' key presses · '+S.taps+' taps</p>';}
@@ -540,7 +574,7 @@ function tryDivide(){var sp=S.split,p=plotById(sp.plotId),best=null;sp.pieces=nu
   if(best){sp.pieces=best.r;sp.secId=best.s.id;}}
 
 /* ---------- render ---------- */
-var VIEWS={start:vStart,phone:vPhone,mark:vMark,confirm:vConfirm,done:vDone,crop:vCrop,sow:vSow,home:vHome,askcrops:vAskCrops,askplot:vAskPlot,split:vSplit};
+var VIEWS={inputs:vInputs,prob:vProb,start:vStart,phone:vPhone,mark:vMark,confirm:vConfirm,done:vDone,crop:vCrop,sow:vSow,home:vHome,askcrops:vAskCrops,askplot:vAskPlot,split:vSplit};
 var lastScreen=null;
 function render(){
   var sh=$("sheet"),st=$("strip"),prevStrip=st?st.scrollLeft:null,prevTop=lastScreen===S.screen?sh.scrollTop:0,lastScreenChanged=lastScreen!==S.screen;
@@ -595,7 +629,7 @@ function toSow(){var s=curSec(),t=s&&s.timing;
   if(t&&t.kind==="month"){S.monSel=monthsAgo(t.date);S.regrow=!!t.regrow;}
   if(t&&t.kind==="age")S.ageSel=t.age;
   go("sow");}
-function saveTiming(t){curSec().timing=t;if(S.setup){go("askcrops");return;}finishSetup();}
+function saveTiming(t){var s=curSec();s.timing=t;if(s.problem){afterSection();return;}S.inp={what:[],when:null};go("inputs");}
 function finishSetup(){if(!S.tEnd){S.tEnd=Date.now();go("done");}else go("home");}
 function setCrop(c){var s=curSec();if(c&&c.custom){s.crop=c.custom;s.custom=true;}else{s.crop=c;s.custom=false;}s.timing=null;toSow();}
 var A={
@@ -604,6 +638,8 @@ var A={
     else if(s==="mark"){if(S.loc.phase!=="choose"){stopCapture();S.loc={phase:"choose"};render();}else go(S.farm.plots.length?(S.setup?"askplot":"home"):"phone");}
     else if(s==="confirm")go("mark");
     else if(s==="sow")go("crop");
+    else if(s==="inputs")toSow();
+    else if(s==="prob"){S.inp=curSec().inputs&&!curSec().inputs.none?{what:curSec().inputs.what.slice(),when:curSec().inputs.when}:{what:[],when:null};go("inputs");}
     else go(S.setup&&S.cur?"askcrops":"home");},
   ver:function(e){location.hash=e.dataset.v==="aao"?"all-at-once":"progressive";S.variant=e.dataset.v;render();},
   askcropsyes:function(){var p=curPlot();S.split={phase:"line",plotId:p.id,points:[],pieces:null,secId:null,msg:""};go("split");fit(p.poly);},
@@ -642,8 +678,19 @@ var A={
   mic:function(){
     if(S.screen==="crop")toggleMic(function(t){var k=parseCrop(t);if(k)return k;var n=cleanCrop(t);return n?{custom:n}:null;},function(r){S.v.result=r;});
     else if(S.screen==="sow"){var k=kindOf(curSec());if(k==="age")return;
-      toggleMic(parseSowingDate,function(d){if(k==="month")S.monSel=Math.min(MAXMON,monthsAgo(d));else{setSow(d);S.sowTouched=true;}});}},
+      toggleMic(parseSowingDate,function(d){if(k==="month")S.monSel=Math.min(MAXMON,monthsAgo(d));else{setSow(d);S.sowTouched=true;}});}
+    else if(S.screen==="inputs")toggleMic(parseInputs,function(r){r.what.forEach(function(k){if(S.inp.what.indexOf(k)<0)S.inp.what.push(k);});if(r.when)S.inp.when=r.when;});
+    else if(S.screen==="prob")toggleMic(function(t){t=String(t||"").trim();return t||null;},function(t){var x=S.prob.text?S.prob.text+". "+t:t;S.prob={text:x,tags:probTags(x)};});},
   retry:function(){S.v={};render();},
+  inp:function(e){var k=e.dataset.k,w=S.inp.what,i=w.indexOf(k);if(i>=0)w.splice(i,1);else w.push(k);render();},
+  inpwhen:function(e){S.inp.when=e.dataset.w;render();},
+  inpsave:function(){if(!S.inp.what.length)return;curSec().inputs={what:S.inp.what.slice(),when:S.inp.when||"ns"};S.prob={text:"",tags:[]};go("prob");},
+  inpnone:function(){curSec().inputs={none:true};S.prob={text:"",tags:[]};go("prob");},
+  probsave:function(){curSec().problem={text:S.prob.text,tags:S.prob.tags};afterSection();},
+  probnone:function(){curSec().problem={none:true};afterSection();},
+  probclear:function(){S.prob={text:"",tags:[]};S.v={};render();},
+  probtype:function(){S.v={typing:true};render();var i=$("probin");if(i)i.focus();},
+  probtyped:function(){var i=$("probin"),t=i&&i.value.trim();if(!t){i&&i.focus();return;}S.prob={text:t,tags:probTags(t)};S.v={};render();},
   crop:function(e){setCrop(e.dataset.c);},
   cropyes:function(){setCrop(S.v.result);},
   sowcell:function(e){T.keepStrip=true;S.sowSel=addDays(today(),-parseInt(e.dataset.i,10));S.sowTouched=true;render();},
@@ -690,7 +737,7 @@ function boot(){
   sh.addEventListener("click",function(e){if(T.noClick&&Date.now()-T.noClick<400){e.stopPropagation();e.preventDefault();return;}
     if(sh.classList.contains("min")){sh.classList.remove("min");e.stopPropagation();e.preventDefault();return;}
     if(inHandle(e.clientY)&&!e.target.closest("[data-a]")){sh.classList.add("min");}},true);})();
-window.__proto={districtAt:districtAt,regionCrops:regionCrops,activeSeasons:activeSeasons,loadRegions:function(){loadRegions();return T.regions;},cleanCrop:cleanCrop,kindOf:kindOf,timingLabel:timingLabel,areaOfLatLngs:areaOfLatLngs,parseCrop:parseCrop,parseSowingDate:parseSowingDate,splitPoly:splitPoly,splitByLine:splitByLine};
+window.__proto={parseInputs:parseInputs,probTags:probTags,districtAt:districtAt,regionCrops:regionCrops,activeSeasons:activeSeasons,loadRegions:function(){loadRegions();return T.regions;},cleanCrop:cleanCrop,kindOf:kindOf,timingLabel:timingLabel,areaOfLatLngs:areaOfLatLngs,parseCrop:parseCrop,parseSowingDate:parseSowingDate,splitPoly:splitPoly,splitByLine:splitByLine};
 if(document.getElementById("sheet"))boot();
 })();
 </script></body></html>
