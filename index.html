@@ -89,6 +89,17 @@ p{margin:4px 0 10px}
 .cell button span{display:block;font-size:12px;color:var(--mute)}
 .cell button b{display:block;font-size:18px}
 .cell.sel button{background:var(--mari);border-color:var(--mari)}.cell.sel button span{color:var(--ink)}
+.eyebrow{font:700 13px/1.2 var(--body);text-transform:uppercase;letter-spacing:.08em;color:#9A6500;margin:0 0 6px}
+.prog{display:flex;gap:4px;margin:0 0 10px}.prog span{flex:1;height:4px;border-radius:2px;background:var(--line);position:relative;overflow:hidden}
+.prog span.d{background:var(--mari)}.prog span.c::after{content:"";position:absolute;left:0;top:0;bottom:0;width:50%;background:var(--mari)}
+.savednote{font-size:15px;font-weight:700;color:#2E7D32;margin:0 0 8px;animation:noteout 2s linear forwards}
+@keyframes noteout{0%,75%{opacity:1}100%{opacity:0}}
+@keyframes slr{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:none}}
+@keyframes sll{from{opacity:0;transform:translateX(-28px)}to{opacity:1;transform:none}}
+@keyframes fuin{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+.slr{animation:slr .24s ease-out}.sll{animation:sll .24s ease-out}.fuin{animation:fuin .2s ease-out}
+@media (prefers-reduced-motion:reduce){.slr,.sll,.fuin{animation:none}}
+.wacard{border:1.5px solid var(--line);border-radius:14px;padding:12px;margin:12px 0 0;background:#fff}.wacard b{display:block}
 .plbl{background:transparent;border:0;box-shadow:none;color:#fff;font:600 14px var(--disp);text-shadow:0 0 3px #000,0 0 3px #000}
 .plbl::before{display:none}
 .hdl{background:var(--mari,#F2A900);border:4px solid #fff;border-radius:50%;box-shadow:0 1px 4px rgba(0,0,0,.4)}
@@ -264,7 +275,7 @@ function vlabel(){return S.variant==="aao"?"Everything up front":"Step by step";
 function fresh(keepMode){return{variant:variantFromHash(),setup:false,screen:"start",mode:keepMode||null,phone:"",otp:null,farm:{plots:[]},cur:null,loc:{phase:"choose"},draft:null,
   weather:null,v:{},sowSel:null,sowTouched:false,split:null,inp:{what:[],when:null},prob:{text:"",tags:[]},t0:null,tEnd:null,keys:0,taps:0,seq:0,centered:false};}
 S=fresh();
-var T={map:null,farmLG:null,draftLG:null,me:null,timers:[],watch:null,rec:null,tok:0,wxTimer:null,keepStrip:false};
+var T={map:null,farmLG:null,draftLG:null,me:null,timers:[],watch:null,rec:null,tok:0,wxTimer:null,keepStrip:false,note:null,dir:0};
 var SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 function hasMap(){return typeof window.L!=="undefined"&&!!T.map;}
 function $(id){return document.getElementById(id);}
@@ -373,6 +384,21 @@ function regionCrops(){var p=curPlot();if(!p)return null;var c=centroid(p.poly),
 function opt(a,ic,label,hint,extra){return '<button class="opt" data-a="'+a+'" '+(extra||'')+'><span class="ic">'+ICON[ic]+'</span><span><b>'+label+'</b><span>'+hint+'</span></span></button>';}
 function unitsLine(m2){var a=fmtAreas(m2);return '<p class="units">'+Math.round(a.cents)+' cents · '+a.guntha.toFixed(1)+' guntha · '+a.ha.toFixed(2)+' ha</p>';}
 function nextPlotName(){return "Plot "+(S.farm.plots.length+1);}
+function note(t){T.note={text:t,t:Date.now()};}
+function eyebrow(step){var p=curPlot(),s=curSec();if(!p)return "";
+  var t=p.name+(p.sections.length>1&&s?" · part "+(p.sections.indexOf(s)+1):"")+(s&&s.crop?" · "+cropName(s):""),bar="",i,n="";
+  for(i=0;i<5;i++)bar+='<span'+(i<step?' class="d"':i===step?' class="c"':'')+'></span>';
+  if(T.note&&Date.now()-T.note.t<2000)n='<div class="savednote" style="animation-delay:-'+(Date.now()-T.note.t)+'ms">✓ Saved: '+esc(T.note.text)+'</div>';
+  return '<div class="eyebrow">'+esc(t)+'</div><div class="prog">'+bar+'</div>'+n;}
+var WSRC=[["rain","Rain only"],["bore","Borewell"],["well","Open well"],["canal","Canal"],["tank","Tank or pond"]],WMETH=[["flood","Flooding"],["drip","Drip"],["sprinkler","Sprinkler"],["hand","By hand or hose"]];
+function waterLine(p){var w=p.water;if(!w)return "";var a=WSRC.filter(function(x){return x[0]===w.src;})[0],m=w.method&&WMETH.filter(function(x){return x[0]===w.method;})[0];
+  return a[1]+(m?" · "+m[1].toLowerCase():"");}
+function vWater(){var p=curPlot(),pw=p.water,src=S.v.src||(pw&&pw.src),h=eyebrow(0)+'<h1>How do '+(S.mode==="worker"?'they':'you')+' water '+esc(p.name)+'?</h1>';
+  h+='<div class="chips">'+WSRC.map(function(x){return '<button class="chip'+(src===x[0]?' sel':'')+'" data-a="water" data-w="'+x[0]+'">'+x[1]+'</button>';}).join("")+'</div>';
+  if(src&&src!=="rain"){var pm=pw&&pw.src===src?pw.method:null;
+    h+='<div class="fu" data-fu="method"><h2>How is the water given?</h2><div class="chips">'+WMETH.map(function(x){return '<button class="chip'+(pm===x[0]?' sel':'')+'" data-a="wmethod" data-m="'+x[0]+'">'+x[1]+'</button>';}).join("")+'</div></div>';}
+  return h;}
+function vSoil(){return '<h1>Do you have a soil test or Soil Health Card for this farm?</h1><button class="btn" data-a="soil" data-v="yes">Yes</button><button class="btn" data-a="soil" data-v="no">No</button><button class="btn" data-a="soil" data-v="unsure">Not sure</button>';}
 
 function vStart(){return '<h1>My Field</h1><p class="mute">See your field from the sky. Get weather and advice for it.</p><div class="opts">'+
   opt("mode","farmer","I\'m a farmer","Set up my own field",'data-m="farmer"')+opt("mode","worker","I\'m registering a farmer","Set up a field for someone else",'data-m="worker"')+'</div>'+
@@ -440,17 +466,21 @@ function wx(){if(S.screen==="home"){render();return;}var e=$("wx");if(!e)return;
     '<h2>Rain, last 7 days</h2><p><b>'+Math.round(tot)+' mm</b>'+(last?' · last rain on '+DAYS[last.d.getDay()]:' · no rain')+'</p>'+
     '<h2>Next 7 days (mm per day)</h2><div class="bars">'+next.map(function(d){return '<div>'+Math.round(d.mm)+'<i style="height:'+Math.round(d.mm/mx*54)+'px"></i>'+DAYS[d.d.getDay()].slice(0,3)+'</div>';}).join("")+'</div>'+
     '<h2>Today</h2><p>Highest temperature <b>'+Math.round(next[0].t)+' °C</b></p>';}
+function waCard(){var f=S.farm,d=S.phone,num=d?d.slice(0,5)+(d.length>5?" "+d.slice(5):""):"";
+  if(f.wa===true)return '<div class="wacard"><b>✓ We\'ll send advice'+(num?' to '+num:'')+' on WhatsApp.</b><div class="small">Test version: nothing is sent.</div></div>';
+  if(f.wa===false)return "";
+  return '<div class="wacard"><b>'+(S.mode==="worker"?'Send advice to their WhatsApp?':'Get this advice on WhatsApp?')+'</b>'+(num?'<div class="small">'+num+'</div>':'')+'<button class="btn p" data-a="wayes">Yes, send on WhatsApp</button><button class="btn txt" data-a="wano">Not now</button></div>';}
 function vDone(){var ps=S.farm.plots,m2=ps.reduce(function(a,p){return a+p.m2;},0),crops=[],adv=[];
   ps.forEach(function(p){p.sections.forEach(function(s){if(s.crop&&crops.indexOf(cropName(s))<0)crops.push(cropName(s));var a=adviceFor(s);if(a)adv.push('<b>'+esc(cropName(s))+'</b> ('+esc(p.name)+'): '+a);});});
   return '<div class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>'+
-    '<h1>'+(S.mode==="worker"?'Their farm is set up':'Your farm is set up')+'</h1><p class="mute">'+ps.length+' plot'+(ps.length>1?'s':'')+' · '+(m2/ACRE).toFixed(2)+' acres'+(crops.length?' · '+esc(crops.join(", ")):'')+'</p>'+
+    '<h1>'+(S.mode==="worker"?'Their farm is set up':'Your farm is set up')+'</h1><p class="mute">'+ps.length+' plot'+(ps.length>1?'s':'')+' · '+(m2/ACRE).toFixed(2)+' acres'+(crops.length?' · '+esc(crops.join(", ")):'')+'</p>'+waCard()+
     adv.map(function(a){return '<div class="adv">'+a+'</div>';}).join("")+'<div id="wx"><p>Loading weather…</p></div>'+
     '<div class="stick"><button class="btn p" data-a="seefarm">See '+fld()+' farm</button></div>';}
 
 /* crop */
 function secTitle(){var p=curPlot(),s=curSec();if(!p||!s)return "";var i=p.sections.indexOf(s);return p.sections.length>1?p.name+", part "+(i+1):p.name;}
 function vCrop(){
-  var v=S.v,h='<h1>What is growing in '+esc(secTitle())+'?</h1>';
+  var v=S.v,h=eyebrow(1)+'<h1>What is growing in '+esc(secTitle())+'?</h1>';
   if(v.result){var nm=v.result.custom||cname(v.result);
     return h+'<p style="font-size:20px"><b>'+esc(nm)+'?</b></p>'+(v.result.custom?'<p class="small">Not in our list. We\'ll save it with this name.</p>':'')+'<button class="btn p" data-a="cropyes">Yes</button><button class="btn" data-a="retry">No</button>';}
   if(v.other){h+='<p class="mute">Say the name of the crop.</p>'+micRow("Tap and say the crop name");
@@ -469,16 +499,16 @@ function vCrop(){
 /* sowing date */
 function sowIdx(){return Math.max(0,Math.min(MAXSOW,daysBetween(S.sowSel,today())));}
 function vSow(){var s=curSec(),k=kindOf(s);
-  if(k==="age"){return '<h1>How old are the '+esc(cropName(s).toLowerCase())+' trees in '+esc(secTitle())+'?</h1><div class="opts">'+
+  if(k==="age"){return eyebrow(2)+'<h1>How old are the '+esc(cropName(s).toLowerCase())+' trees in '+esc(secTitle())+'?</h1><div class="opts">'+
     AGES.map(function(a){return '<button class="btn'+(S.ageSel===a[0]?' p':'')+'" data-a="age" data-g="'+a[0]+'">'+a[1]+'</button>';}).join("")+'</div>';}
-  if(k==="month"){var long=!!REGROW[s.crop],h='<h1>When did you plant '+esc(cropName(s).toLowerCase())+' in '+esc(secTitle())+'?</h1>';
+  if(k==="month"){var long=!!REGROW[s.crop],h=eyebrow(2)+'<h1>When did you plant '+esc(cropName(s).toLowerCase())+' in '+esc(secTitle())+'?</h1>';
     if(long)h+='<div class="chips"><button class="chip'+(!S.regrow?' sel':'')+'" data-a="regrow" data-r="0">First crop</button><button class="chip'+(S.regrow?' sel':'')+'" data-a="regrow" data-r="1">Regrowth after a harvest</button></div>';
     h+=micRow('Say "eight months ago"');
     if(S.regrow)h+='<p class="small">Pick the month of the last harvest.</p>';
     var cells="";for(var i=0;i<=MAXMON;i++){var m=monthStart(i);cells+='<button class="chip'+(S.monSel===i?' sel':'')+'" data-a="sowmon" data-i="'+i+'">'+MON3[m.getMonth()]+' '+String(m.getFullYear()).slice(2)+'</button>';}
     h+='<div class="mgrid">'+cells+'</div>';
     return h+'<button class="btn p" data-a="sowok" '+(S.monSel==null?'disabled':'')+'>That\'s right</button>';}
-  var idx=sowIdx(),d=addDays(today(),-idx),tp=S.method==="tp",verb=s.crop==="paddy"&&tp?"transplant":"sow",h='<h1>When did you '+verb+' '+esc(secTitle())+'?</h1>';
+  var idx=sowIdx(),d=addDays(today(),-idx),tp=S.method==="tp",verb=s.crop==="paddy"&&tp?"transplant":"sow",h=eyebrow(2)+'<h1>When did you '+verb+' '+esc(secTitle())+'?</h1>';
   if(s.crop==="paddy")h+='<div class="chips"><button class="chip'+(tp?' sel':'')+'" data-a="method" data-m="tp">Transplanted</button><button class="chip'+(!tp?' sel':'')+'" data-a="method" data-m="ds">Sowed seed directly</button></div>';
   h+=micRow('Say "three weeks ago" or "yesterday"');
   h+='<div class="dayrow"><button class="step" data-a="sowd" data-d="-1" '+(idx>=MAXSOW?'disabled':'')+'>−1 day</button><div class="bigday">'+fmtDay(d)+'</div><button class="step" data-a="sowd" data-d="1" '+(idx<=0?'disabled':'')+'>+1 day</button></div>';
@@ -493,19 +523,19 @@ function mountStrip(prev){var st=$("strip");if(!st)return;
   T.keepStrip=false;}
 
 /* inputs + problems */
-function vInputs(){var s=curSec(),c=cropName(s).toLowerCase(),x=S.inp,h='<h1>Any manure or fertiliser on '+esc(c)+' in '+esc(secTitle())+' so far?</h1>';
+function vInputs(){var s=curSec(),c=cropName(s).toLowerCase(),x=S.inp,h=eyebrow(3)+'<h1>Any manure or fertiliser on '+esc(c)+' in '+esc(secTitle())+' so far?</h1>';
   h+=micRow('Say "urea two weeks ago" or "cow dung at planting"');
   h+='<div class="chips">'+INPUTS.map(function(i){return '<button class="chip'+(x.what.indexOf(i[0])>=0?' sel':'')+'" data-a="inp" data-k="'+i[0]+'">'+i[1]+'</button>';}).join("")+'</div>';
-  if(x.what.length)h+='<h2>When?</h2><div class="chips">'+WHEN.map(function(w){return '<button class="chip'+(x.when===w[0]?' sel':'')+'" data-a="inpwhen" data-w="'+w[0]+'">'+w[1]+'</button>';}).join("")+'</div>';
+  if(x.what.length)h+='<div class="fu" data-fu="when"><h2>When?</h2><div class="chips">'+WHEN.map(function(w){return '<button class="chip'+(x.when===w[0]?' sel':'')+'" data-a="inpwhen" data-w="'+w[0]+'">'+w[1]+'</button>';}).join("")+'</div></div>';
   return h+'<div class="stick">'+(x.what.length?'<button class="btn p" data-a="inpsave">Save</button>':'')+'<button class="btn'+(x.what.length?'':' p')+'" data-a="inpnone">Nothing yet</button></div>';}
-function vProb(){var s=curSec(),c=cropName(s).toLowerCase(),x=S.prob,v=S.v,h='<h1>Any pest or disease problems on '+esc(c)+'?</h1>';
+function vProb(){var s=curSec(),c=cropName(s).toLowerCase(),x=S.prob,v=S.v,h=eyebrow(4)+'<h1>Any pest or disease problems on '+esc(c)+'?</h1>';
   h+=micRow(x.text?"Tap to add more":"Tap and tell us what you see");
   if(x.text)h+='<div class="plot"><p class="small" style="margin:0">You said</p><p style="margin:4px 0 0">“'+esc(x.text)+'”</p>'+(x.tags.length?'<p class="small" style="margin:8px 0 0">We noted: '+esc(x.tags.join(", "))+'</p>':'')+'</div>';
   if(!x.text&&(v.typing||S.mode==="worker"||!SR))h+='<textarea class="tin" id="probin" rows="3" placeholder="Describe the problem"></textarea><button class="btn" data-a="probtyped">Use this</button>';
   else if(!x.text)h+='<button class="btn txt" data-a="probtype">Type it instead</button>';
   if(x.text)return h+'<button class="btn p" data-a="probsave">Save</button><button class="btn" data-a="probclear">Clear</button>';
   return h+'<button class="btn p" data-a="probnone">No problems</button>';}
-function afterSection(){if(S.setup){go("askcrops");return;}finishSetup();}
+function afterSection(){S.edit=false;if(S.setup){go("askcrops");return;}finishSetup();}
 
 /* home */
 function weekAdvice(){var w=S.weather;if(!w||!w.days)return "";
@@ -539,11 +569,12 @@ function adviceFor(sec){
 function vHome(){
   var el=Math.round(((S.tEnd||Date.now())-S.t0)/1000),wa=weekAdvice(),h='<h1>Your farm</h1>'+(wa?'<div class="adv" style="margin:0 0 12px;font-weight:700">This week: '+wa+'</div>':'');
   h+=S.farm.plots.map(function(p){var a=fmtAreas(p.m2);
-    return '<div class="plot"><div class="ph"><b>'+esc(p.name)+'</b><span class="mute">'+a.acres.toFixed(2)+' acres</span></div>'+
+    return '<div class="plot"><div class="ph"><b>'+esc(p.name)+'</b><span class="mute">'+a.acres.toFixed(2)+' acres</span></div>'+(p.water?'<div class="small">'+esc(waterLine(p))+'</div>':'')+
       p.sections.map(function(s,i){var lab=p.sections.length>1?' <span class="mute">(part '+(i+1)+', '+(s.m2/ACRE).toFixed(2)+' ac)</span>':'';
         if(!s.crop)return '<div class="sec"><i class="dot" style="background:#fff"></i><div><b>Crop not set</b>'+lab+'<br><button class="sbtn" data-a="setcrop" data-p="'+p.id+'" data-s="'+s.id+'">Set crop</button></div></div>';
         if(!s.timing)return '<div class="sec"><i class="dot" style="background:'+ccol(s)+'"></i><div><b>'+esc(cropName(s))+'</b>'+lab+'<br><button class="sbtn" data-a="setsow" data-p="'+p.id+'" data-s="'+s.id+'">'+(kindOf(s)==="age"?"Set tree age":"Set planting date")+'</button></div></div>';
         return '<div class="sec"><i class="dot" style="background:'+ccol(s)+'"></i><div><b>'+esc(cropName(s))+'</b> · '+timingLabel(s)+lab+(inputsLine(s)?'<div class="small">'+esc(inputsLine(s))+'</div>':'')+(probLine(s)?'<div class="small">'+esc(probLine(s))+'</div>':'')+(adviceFor(s)?'<div class="adv">'+adviceFor(s)+'</div>':'')+'</div></div>';}).join("")+'</div>';}).join("");
+  if(S.farm.soil)h+='<p class="small">Soil test: '+({yes:"yes",no:"no",unsure:"not sure"})[S.farm.soil]+'</p>';
   h+='<div class="opts">'+opt("addplot","plus","Add another plot","Mark more land")+opt("twocrops","split","This plot has two crops","Draw a dividing line")+
     (S.mode==="worker"?opt("again","worker","Register another farmer","Start again for the next person"):'')+'</div>';
   return h+'<p class="small" style="margin-top:12px">'+vlabel()+' · '+pad(Math.floor(el/60))+':'+pad(el%60)+' · '+S.keys+' key presses · '+S.taps+' taps</p>';}
@@ -574,11 +605,13 @@ function tryDivide(){var sp=S.split,p=plotById(sp.plotId),best=null;sp.pieces=nu
   if(best){sp.pieces=best.r;sp.secId=best.s.id;}}
 
 /* ---------- render ---------- */
-var VIEWS={inputs:vInputs,prob:vProb,start:vStart,phone:vPhone,mark:vMark,confirm:vConfirm,done:vDone,crop:vCrop,sow:vSow,home:vHome,askcrops:vAskCrops,askplot:vAskPlot,split:vSplit};
+var VIEWS={water:vWater,soil:vSoil,inputs:vInputs,prob:vProb,start:vStart,phone:vPhone,mark:vMark,confirm:vConfirm,done:vDone,crop:vCrop,sow:vSow,home:vHome,askcrops:vAskCrops,askplot:vAskPlot,split:vSplit};
 var lastScreen=null;
 function render(){
-  var sh=$("sheet"),st=$("strip"),prevStrip=st?st.scrollLeft:null,prevTop=lastScreen===S.screen?sh.scrollTop:0,lastScreenChanged=lastScreen!==S.screen;
-  sh.innerHTML=VIEWS[S.screen]();sh.scrollTop=prevTop;lastScreen=S.screen;
+  var sh=$("sheet"),st=$("strip"),prevStrip=st?st.scrollLeft:null,prevTop=lastScreen===S.screen?sh.scrollTop:0,lastScreenChanged=lastScreen!==S.screen,prevFu=[];
+  if(!lastScreenChanged)Array.prototype.forEach.call(sh.querySelectorAll("[data-fu]"),function(e){prevFu.push(e.getAttribute("data-fu"));});
+  sh.innerHTML='<div id="sv"'+(lastScreenChanged?' class="'+(T.dir<0?'sll':'slr')+'"':'')+'>'+VIEWS[S.screen]()+'</div>';sh.scrollTop=prevTop;lastScreen=S.screen;T.dir=0;
+  if(!lastScreenChanged)Array.prototype.forEach.call(sh.querySelectorAll("[data-fu]"),function(e){if(prevFu.indexOf(e.getAttribute("data-fu"))<0){e.classList.add("fuin");if(e.scrollIntoView)e.scrollIntoView({block:"nearest",behavior:"smooth"});}});
   document.body.classList.toggle("dimmed",S.screen==="start"||S.screen==="phone");
   $("bk").classList.toggle("hide",S.screen==="start"||S.screen==="phone"||S.screen==="done");
   $("lc").classList.toggle("hide",!navigator.geolocation||!hasMap());
@@ -629,12 +662,15 @@ function toSow(){var s=curSec(),t=s&&s.timing;
   if(t&&t.kind==="month"){S.monSel=monthsAgo(t.date);S.regrow=!!t.regrow;}
   if(t&&t.kind==="age")S.ageSel=t.age;
   go("sow");}
-function saveTiming(t){var s=curSec();s.timing=t;if(s.problem){afterSection();return;}S.inp={what:[],when:null};go("inputs");}
-function finishSetup(){if(!S.tEnd){S.tEnd=Date.now();go("done");}else go("home");}
-function setCrop(c){var s=curSec();if(c&&c.custom){s.crop=c.custom;s.custom=true;}else{s.crop=c;s.custom=false;}s.timing=null;toSow();}
+function saveTiming(t){var s=curSec();s.timing=t;note(t.kind==="day"?"Day "+Math.max(0,daysBetween(t.date,today())):timingLabel(s));if(s.problem){afterSection();return;}S.inp={what:[],when:null};go("inputs");}
+function finishSetup(){if(!S.tEnd){if(!S.farm.soil){go("soil");return;}S.tEnd=Date.now();go("done");}else go("home");}
+function setCrop(c){var s=curSec();if(c&&c.custom){s.crop=c.custom;s.custom=true;}else{s.crop=c;s.custom=false;}s.timing=null;note(cropName(s));toSow();}
 var A={
-  back:function(){var s=S.screen;
-    if(s==="phone"){S.otp=null;go("start");}
+  back:function(){var s=S.screen,p;T.dir=-1;
+    if(s==="water"){p=curPlot();if(p&&!p.sections[0].crop){S.farm.plots.splice(S.farm.plots.indexOf(p),1);S.cur=null;}go("confirm");}
+    else if(s==="soil")go(S.variant==="aao"?"askplot":"prob");
+    else if(s==="crop"&&!S.edit&&curPlot()&&curPlot().sections.indexOf(curSec())===0)go("water");
+    else if(s==="phone"){S.otp=null;go("start");}
     else if(s==="mark"){if(S.loc.phase!=="choose"){stopCapture();S.loc={phase:"choose"};render();}else go(S.farm.plots.length?(S.setup?"askplot":"home"):"phone");}
     else if(s==="confirm")go("mark");
     else if(s==="sow")go("crop");
@@ -672,9 +708,16 @@ var A={
   size:function(e){var d=S.draft;setSquare(d.center,d.acc,Math.max(0,Math.min(SIZES.length-1,d.si+parseInt(e.dataset.d,10))));},
   redo:function(){go("mark");},
   looks:function(){var d=S.draft,first=!S.farm.plots.length,id=uid(),sid=uid();
-    S.farm.plots.push({id:id,name:nextPlotName(),poly:d.poly,m2:d.m2,sections:[{id:sid,poly:d.poly,m2:d.m2,crop:null,timing:null}]});
-    S.cur={p:id,s:sid};
-    loadRegions();if(first)fetchWeather(d.poly);go("crop");fit(d.poly);},
+    S.farm.plots.push({id:id,name:nextPlotName(),poly:d.poly,m2:d.m2,water:null,sections:[{id:sid,poly:d.poly,m2:d.m2,crop:null,timing:null}]});
+    S.cur={p:id,s:sid};S.edit=false;
+    loadRegions();if(first)fetchWeather(d.poly);go("water");fit(d.poly);},
+  water:function(e){var src=e.dataset.w,p=curPlot();
+    if(src==="rain"){p.water={src:"rain",method:null};note("Rain only");go("crop");}
+    else{S.v.src=src;render();}},
+  wmethod:function(e){var p=curPlot(),src=S.v.src||(p.water&&p.water.src);if(!src||src==="rain")return;p.water={src:src,method:e.dataset.m};note(waterLine(p));go("crop");},
+  soil:function(e){S.farm.soil=e.dataset.v;finishSetup();},
+  wayes:function(){S.farm.wa=true;render();},
+  wano:function(){S.farm.wa=false;render();},
   mic:function(){
     if(S.screen==="crop")toggleMic(function(t){var k=parseCrop(t);if(k)return k;var n=cleanCrop(t);return n?{custom:n}:null;},function(r){S.v.result=r;});
     else if(S.screen==="sow"){var k=kindOf(curSec());if(k==="age")return;
@@ -684,8 +727,8 @@ var A={
   retry:function(){S.v={};render();},
   inp:function(e){var k=e.dataset.k,w=S.inp.what,i=w.indexOf(k);if(i>=0)w.splice(i,1);else w.push(k);render();},
   inpwhen:function(e){S.inp.when=e.dataset.w;render();},
-  inpsave:function(){if(!S.inp.what.length)return;curSec().inputs={what:S.inp.what.slice(),when:S.inp.when||"ns"};S.prob={text:"",tags:[]};go("prob");},
-  inpnone:function(){curSec().inputs={none:true};S.prob={text:"",tags:[]};go("prob");},
+  inpsave:function(){if(!S.inp.what.length)return;note(INPUTS.filter(function(x){return S.inp.what.indexOf(x[0])>=0;}).map(function(x){return x[1].split(" /")[0];}).join(", "));curSec().inputs={what:S.inp.what.slice(),when:S.inp.when||"ns"};S.prob={text:"",tags:[]};go("prob");},
+  inpnone:function(){note("No fertiliser yet");curSec().inputs={none:true};S.prob={text:"",tags:[]};go("prob");},
   probsave:function(){curSec().problem={text:S.prob.text,tags:S.prob.tags};afterSection();},
   probnone:function(){curSec().problem={none:true};afterSection();},
   probclear:function(){S.prob={text:"",tags:[]};S.v={};render();},
@@ -706,8 +749,8 @@ var A={
   cropmore:function(){S.v={more:true};render();},
   croptype:function(){S.v={other:true,typing:true};render();var i=$("cropin");if(i)i.focus();},
   croptyped:function(){var i=$("cropin"),n=i&&cleanCrop(i.value);if(!n){i&&i.focus();return;}var k=parseCrop(n);S.v={result:k||{custom:n}};render();},
-  setcrop:function(e){S.cur={p:+e.dataset.p,s:+e.dataset.s};go("crop");},
-  setsow:function(e){S.cur={p:+e.dataset.p,s:+e.dataset.s};toSow();},
+  setcrop:function(e){S.edit=true;S.cur={p:+e.dataset.p,s:+e.dataset.s};go("crop");},
+  setsow:function(e){S.edit=true;S.cur={p:+e.dataset.p,s:+e.dataset.s};toSow();},
   addplot:function(){S.cur=null;enterMark();},
   twocrops:function(){S.split={phase:"pick",plotId:null,points:[],pieces:null,secId:null,msg:""};
     if(S.farm.plots.length===1){go("split");startSplit(S.farm.plots[0].id);}else go("split");},
